@@ -12,6 +12,7 @@ import os
 import math
 import wandb
 from pydantic import BaseModel
+import random
 
 
 def create_mnist_dataloaders(batch_size, image_size=28, num_workers=2):
@@ -40,8 +41,8 @@ def create_mnist_dataloaders(batch_size, image_size=28, num_workers=2):
 class ArgsModel(BaseModel):
     batch_size: int = 128
     ckpt: str | None = None  # Checkpoint path
-    timesteps: int = 10
-    epochs: int = 2
+    timesteps: int = 1000
+    epochs: int = 15
     model_base_dim = 64
     lr: float = 0.001
     n_samples: int = 36  # Samples after every epoch trained
@@ -51,20 +52,21 @@ class ArgsModel(BaseModel):
     no_clip: bool = True
     image_size: int = 32
     dim_mults: list[int] = [2, 4]
+    log_wandb: bool = False
 
 
 def main():
     args = ArgsModel()
-    wandb.login()
-    wandb.init(
-        project="speeding_up_diffusion",
-        config=args.dict(),
-        tags=["progressive_scaling", "mnist"],
-    )
+    if args.log_wandb:
+        wandb.login()
+        wandb.init(
+            project="speeding_up_diffusion",
+            config=args.dict(),
+            tags=["progressive_scaling", "mnist"],
+        )
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    device = "cpu" if args.cpu else "cuda"
     train_dataloader, test_dataloader = create_mnist_dataloaders(
         batch_size=args.batch_size, image_size=args.image_size
     )
@@ -100,77 +102,78 @@ def main():
         model.load_state_dict(ckpt["model"])
 
     global_steps = 0
-    for i in range(args.epochs):
-        model.train()
+    levels = len(args.dim_mults)
+    for level in range(levels, 0, -1):
+        for i in range(args.epochs):
+            model.train()
 
-        total_loss = 0
-        for j, (image, target) in enumerate(train_dataloader):
-            random_int = torch.randint(0, args.timesteps, (1,))
-            level = _calculate_level(random_int, args.timesteps, len(args.dim_mults))
-            if level > (len(args.dim_mults) - 1):
-                print(
-                    f"WARNING: level is larger than the number of dim_mults. Level: {level}. Random int: {random_int}"
+            total_loss = 0
+            for j, (image, target) in enumerate(train_dataloader):
+                image = _downscale(image, level, args.image_size)
+                noise = torch.randn_like(image).to(device)
+                image = image.to(device)
+
+                # Expand it to have the same shape as the first dimension of x
+                t = (
+                    _calculate_t(level, args.timesteps, levels)
+                    .expand(image.shape[0])
+                    .to(image.device)
                 )
 
-            image = _downscale(image, level, args.image_size)
-            noise = torch.randn_like(image).to(device)
-            image = image.to(device)
+                pred = model(image, noise, t, level=level)
+                loss = loss_fn(pred, noise)
+                loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
+                scheduler.step()
+                if global_steps % args.model_ema_steps == 0:
+                    model_ema.update_parameters(model)
+                global_steps += 1
+                total_loss += loss.detach().cpu().item()
 
-            # Expand it to have the same shape as the first dimension of x
-            t = random_int.expand(image.shape[0]).to(image.device)
-
-            pred = model(image, noise, t, level=level)
-            loss = loss_fn(pred, noise)
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-            scheduler.step()
-            if global_steps % args.model_ema_steps == 0:
-                model_ema.update_parameters(model)
-            global_steps += 1
-            total_loss += loss.detach().cpu().item()
-
-        avg_loss = total_loss / len(train_dataloader)
-        print(
-            "Epoch[{}/{}]:{:.5f}".format(
-                i + 1,
-                args.epochs,
-                avg_loss,
+            avg_loss = total_loss / len(train_dataloader)
+            print(
+                "Epoch[{}/{}]:{:.5f}".format(
+                    i + 1,
+                    args.epochs,
+                    avg_loss,
+                )
             )
-        )
 
-        ckpt = {"model": model.state_dict(), "model_ema": model_ema.state_dict()}
+            ckpt = {"model": model.state_dict(), "model_ema": model_ema.state_dict()}
 
-        os.makedirs("results", exist_ok=True)
-        ckpt_name = f"results/epoch{i}.pt"
-        torch.save(ckpt, ckpt_name)
+            os.makedirs("results", exist_ok=True)
+            ckpt_name = f"results/epoch{i}.pt"
+            torch.save(ckpt, ckpt_name)
 
-        model_ema.eval()
-        samples = model_ema.module.sampling(args.n_samples, device=device)
+            model_ema.eval()
+            samples = model_ema.module.sampling(args.n_samples, device=device)
 
-        save_image(
-            samples,
-            f"results/epoch_{i}.png",
-            nrow=int(math.sqrt(args.n_samples)),
-        )
-        wandb.log(
-            {
-                "epoch": i + 1,
-                "loss": avg_loss,
-                "global_steps": global_steps,
-                "lr": scheduler.get_last_lr()[0],
-                f"sample": wandb.Image(f"results/epoch_{i}.png"),
-            }
-        )
+            save_image(
+                samples,
+                f"results/epoch_{i}.png",
+                nrow=int(math.sqrt(args.n_samples)),
+            )
+            if args.log_wandb:
+                wandb.log(
+                    {
+                        "epoch": i + 1,
+                        "loss": avg_loss,
+                        "global_steps": global_steps,
+                        "lr": scheduler.get_last_lr()[0],
+                        f"sample": wandb.Image(f"results/epoch_{i}.png"),
+                    }
+                )
 
     wandb.finish()
 
 
-def _calculate_level(t, timesteps, levels):
+def _calculate_t(level, timesteps, levels):
     # Divide the timesteps into levels equally
-    level = (t) // (timesteps // levels)
-
-    return level
+    uppper_t = (timesteps // levels) * level - 1
+    lower_t = (timesteps // levels) * (level - 1)
+    t = random.randint(lower_t, uppper_t)
+    return torch.tensor(t, dtype=torch.int64)
 
 
 def _calc_rescale_factor(level):
