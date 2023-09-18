@@ -126,9 +126,6 @@ def main(args):
             # Expand it to have the same shape as the first dimension of x
             t = random_int.expand(image.shape[0]).to(image.device)
 
-            print(f"random_int: {random_int}")
-            print(f"level: {level}")
-
             pred = model(image, noise, t, level=level)
             loss = loss_fn(pred, noise)
             loss.backward()
@@ -179,17 +176,6 @@ def _calc_rescale_factor(level):
 def _downscale(x, level):
     rescale_factor = _calc_rescale_factor(level)
     new_img_size = image_size // rescale_factor
-    x = transforms.Resize(
-        size=(new_img_size, new_img_size),
-        interpolation=transforms.InterpolationMode.BILINEAR,
-    )(x)
-
-    return x
-
-
-def _upscale(x, level):
-    rescale_factor = _calc_rescale_factor(level)
-    new_img_size = image_size * rescale_factor
     x = transforms.Resize(
         size=(new_img_size, new_img_size),
         interpolation=transforms.InterpolationMode.BILINEAR,
