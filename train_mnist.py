@@ -73,14 +73,17 @@ def parse_args():
     return args
 
 
+image_size = 32
+
+
 def main(args):
     device = "cpu" if args.cpu else "cuda"
     train_dataloader, test_dataloader = create_mnist_dataloaders(
-        batch_size=args.batch_size, image_size=32
+        batch_size=args.batch_size, image_size=image_size
     )
     model = MNISTDiffusion(
         timesteps=args.timesteps,
-        image_size=32,
+        image_size=image_size,
         in_channels=1,
         base_dim=args.model_base_dim,
         dim_mults=[2, 4, 8],
@@ -113,9 +116,20 @@ def main(args):
     for i in range(args.epochs):
         model.train()
         for j, (image, target) in enumerate(train_dataloader):
+            random_int = torch.randint(0, args.timesteps, (1,))
+            level = _calculate_level(random_int, args.timesteps, 3)
+
+            image = _downscale(image, level)
             noise = torch.randn_like(image).to(device)
             image = image.to(device)
-            pred = model(image, noise)
+
+            # Expand it to have the same shape as the first dimension of x
+            t = random_int.expand(image.shape[0]).to(image.device)
+
+            print(f"random_int: {random_int}")
+            print(f"level: {level}")
+
+            pred = model(image, noise, t, level=level)
             loss = loss_fn(pred, noise)
             loss.backward()
             optimizer.step()
@@ -147,6 +161,41 @@ def main(args):
             "results/steps_{:0>8}.png".format(global_steps),
             nrow=int(math.sqrt(args.n_samples)),
         )
+
+
+def _calculate_level(t, timesteps, levels):
+    # Divide the timesteps into levels equally
+    level = t // (timesteps // levels)
+
+    return level
+
+
+def _calc_rescale_factor(level):
+    rescale_factor = 2**level
+
+    return rescale_factor
+
+
+def _downscale(x, level):
+    rescale_factor = _calc_rescale_factor(level)
+    new_img_size = image_size // rescale_factor
+    x = transforms.Resize(
+        size=(new_img_size, new_img_size),
+        interpolation=transforms.InterpolationMode.BILINEAR,
+    )(x)
+
+    return x
+
+
+def _upscale(x, level):
+    rescale_factor = _calc_rescale_factor(level)
+    new_img_size = image_size * rescale_factor
+    x = transforms.Resize(
+        size=(new_img_size, new_img_size),
+        interpolation=transforms.InterpolationMode.BILINEAR,
+    )(x)
+
+    return x
 
 
 if __name__ == "__main__":

@@ -38,18 +38,10 @@ class MNISTDiffusion(nn.Module):
             timesteps, time_embedding_dim, in_channels, in_channels, base_dim, dim_mults
         )
 
-    def forward(self, x, noise):
+    def forward(self, x, noise, t, level=None):
         # x:NCHW
         # Generate a single random integer
-        random_int = torch.randint(0, self.timesteps, (1,))
 
-        # Expand it to have the same shape as the first dimension of x
-        t = random_int.expand(x.shape[0]).to(x.device)
-        level = self._calculate_level(random_int)
-        print(f"random_int: {random_int}")
-        print(f"level: {level}")
-        x = self._downscale(x, level)
-        noise = self._downscale(noise, level)
         x_t = self._forward_diffusion(x, t, noise)
         pred_noise = self.model(
             x_t,
@@ -127,35 +119,3 @@ class MNISTDiffusion(nn.Module):
             std = 0.0
 
         return mean + std * noise
-
-    def _calculate_level(self, t):
-        levels = len(self.model.encoder_blocks)
-        # Divide the timesteps into levels equally
-        level = t // (self.timesteps // levels)
-
-        return level
-
-    def _calc_rescale_factor(self, level):
-        rescale_factor = 2**level
-
-        return rescale_factor
-
-    def _downscale(self, x, level):
-        rescale_factor = self._calc_rescale_factor(level)
-        new_img_size = self.image_size // rescale_factor
-        x = transforms.Resize(
-            size=(new_img_size, new_img_size),
-            interpolation=transforms.InterpolationMode.BILINEAR,
-        )(x)
-
-        return x
-
-    def _upscale(self, x, level):
-        rescale_factor = self._calc_rescale_factor(level)
-        new_img_size = self.image_size // rescale_factor
-        x = transforms.Resize(
-            size=(new_img_size, new_img_size),
-            interpolation=transforms.InterpolationMode.BILINEAR,
-        )(x)
-
-        return x
