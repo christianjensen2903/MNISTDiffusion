@@ -213,6 +213,8 @@ class Unet(nn.Module):
 
     def forward(self, x, t=None, level=None):
         level = level or 0
+        if level > (len(self.encoder_blocks) - 1):
+            level = len(self.encoder_blocks) - 1
         if t is not None:
             t = self.time_embedding(t)
 
