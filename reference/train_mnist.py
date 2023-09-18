@@ -12,6 +12,23 @@ import os
 import math
 import argparse
 import wandb
+from pydantic import BaseModel
+
+
+class ArgsModel(BaseModel):
+    batch_size: int = 128
+    ckpt: str | None = None  # Checkpoint path
+    timesteps: int = 10
+    epochs: int = 2
+    model_base_dim = 64
+    lr: float = 0.001
+    n_samples: int = 36  # Samples after every epoch trained
+    model_ema_steps: int = 10
+    model_ema_decay: float = 0.995
+    log_freq: int = 10
+    no_clip: bool = True
+    image_size: int = 32
+    dim_mults: list[int] = [2, 4]
 
 
 def create_mnist_dataloaders(batch_size, image_size=28, num_workers=2):
@@ -37,60 +54,21 @@ def create_mnist_dataloaders(batch_size, image_size=28, num_workers=2):
     )
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Training MNISTDiffusion")
-    parser.add_argument("--lr", type=float, default=0.001)
-    parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--ckpt", type=str, help="define checkpoint path", default="")
-    parser.add_argument(
-        "--n_samples",
-        type=int,
-        help="define sampling amounts after every epoch trained",
-        default=36,
-    )
-    parser.add_argument(
-        "--model_base_dim", type=int, help="base dim of Unet", default=64
-    )
-    parser.add_argument(
-        "--timesteps", type=int, help="sampling steps of DDPM", default=1000
-    )
-    parser.add_argument(
-        "--model_ema_steps", type=int, help="ema model evaluation interval", default=10
-    )
-    parser.add_argument(
-        "--model_ema_decay", type=float, help="ema model decay", default=0.995
-    )
-    parser.add_argument(
-        "--log_freq",
-        type=int,
-        help="training log message printing frequence",
-        default=10,
-    )
-    parser.add_argument("--cpu", action="store_true", help="cpu training")
-
-    args = parser.parse_args()
-
-    return args
-
-
-image_size = 32
-
-
-def main(args):
+def main():
+    args = ArgsModel()
     wandb.login()
-    wandb.init(project="speeding_up_diffusion", config=args, tags=["reference"])
+    wandb.init(project="speeding_up_diffusion", config=args.dict(), tags=["reference"])
 
-    device = "cpu" if args.cpu else "cuda"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     train_dataloader, test_dataloader = create_mnist_dataloaders(
-        batch_size=args.batch_size, image_size=image_size
+        batch_size=args.batch_size, image_size=args.image_size
     )
     model = MNISTDiffusion(
         timesteps=args.timesteps,
-        image_size=image_size,
+        image_size=args.image_size,
         in_channels=1,
         base_dim=args.model_base_dim,
-        dim_mults=[2, 4, 8],
+        dim_mults=args.dim_mults,
     ).to(device)
 
     # torchvision ema setting
@@ -144,6 +122,7 @@ def main(args):
             )
         )
         os.makedirs("results", exist_ok=True)
+        ckpt = {"model": model.state_dict(), "model_ema": model_ema.state_dict()}
         ckpt_name = f"results/epoch{i}.pt"
         torch.save(ckpt, ckpt_name)
 
@@ -168,5 +147,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    main()
