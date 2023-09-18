@@ -89,7 +89,7 @@ def main():
     scheduler = OneCycleLR(
         optimizer,
         args.lr,
-        total_steps=args.epochs * len(train_dataloader),
+        total_steps=args.epochs * 2 * len(train_dataloader),
         pct_start=0.25,
         anneal_strategy="cos",
     )
