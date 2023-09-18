@@ -2,3 +2,4 @@
 mnist_data
 assets
 *.pyc
+wandb

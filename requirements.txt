@@ -2,3 +2,4 @@ torch
 torchvision
 tqdm
 argparse
+wandb==0.15.10

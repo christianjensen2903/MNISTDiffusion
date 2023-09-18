@@ -11,6 +11,7 @@ from utils import ExponentialMovingAverage
 import os
 import math
 import argparse
+import wandb
 
 
 def create_mnist_dataloaders(batch_size, image_size=28, num_workers=4):
@@ -77,6 +78,9 @@ image_size = 32
 
 
 def main(args):
+    wandb.login()
+    wandb.init(project="speeding_up_diffusion", config=args, tags="progessive_scaling")
+
     device = "cpu" if args.cpu else "cuda"
     train_dataloader, test_dataloader = create_mnist_dataloaders(
         batch_size=args.batch_size, image_size=image_size
@@ -146,23 +150,41 @@ def main(args):
                         scheduler.get_last_lr()[0],
                     )
                 )
+                wandb.log(
+                    {
+                        "epoch": i + 1,
+                        "step": j,
+                        "global_steo": global_steps,
+                        "loss": loss.detach().cpu().item(),
+                        "lr": scheduler.get_last_lr()[0],
+                    }
+                )
         ckpt = {"model": model.state_dict(), "model_ema": model_ema.state_dict()}
 
         os.makedirs("results", exist_ok=True)
-        torch.save(ckpt, "results/steps_{:0>8}.pt".format(global_steps))
+        ckpt_name = "results/steps_{:0>8}.pt".format(global_steps)
+        torch.save(ckpt, ckpt_name)
+        wandb.log_artifact(ckpt)
+        wandb.save(ckpt_name)
 
         model_ema.eval()
         samples = model_ema.module.sampling(args.n_samples, device=device)
+
         save_image(
             samples,
             "results/steps_{:0>8}.png".format(global_steps),
             nrow=int(math.sqrt(args.n_samples)),
         )
+        wandb.log_artifact(
+            {"xample": wandb.Image("results/steps_{:0>8}.png".format(global_steps))}
+        )
+
+    wandb.finish()
 
 
 def _calculate_level(t, timesteps, levels):
     # Divide the timesteps into levels equally
-    level = t // (timesteps // levels)
+    level = (t) // (timesteps // levels)
 
     return level
 
