@@ -18,8 +18,8 @@ from pydantic import BaseModel
 class ArgsModel(BaseModel):
     batch_size: int = 128
     ckpt: str | None = None  # Checkpoint path
-    timesteps: int = 10
-    epochs: int = 2
+    timesteps: int = 1000
+    epochs: int = 30
     model_base_dim = 64
     lr: float = 0.001
     n_samples: int = 36  # Samples after every epoch trained
@@ -57,7 +57,9 @@ def create_mnist_dataloaders(batch_size, image_size=28, num_workers=2):
 def main():
     args = ArgsModel()
     wandb.login()
-    wandb.init(project="speeding_up_diffusion", config=args.dict(), tags=["reference"])
+    wandb.init(
+        project="speeding_up_diffusion", config=args.dict(), tags=["reference", "mnist"]
+    )
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     train_dataloader, test_dataloader = create_mnist_dataloaders(

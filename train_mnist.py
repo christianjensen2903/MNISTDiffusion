@@ -59,7 +59,7 @@ def main():
     wandb.init(
         project="speeding_up_diffusion",
         config=args.dict(),
-        tags=["progressive_scaling"],
+        tags=["progressive_scaling", "mnist"],
     )
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -106,7 +106,11 @@ def main():
         total_loss = 0
         for j, (image, target) in enumerate(train_dataloader):
             random_int = torch.randint(0, args.timesteps, (1,))
-            level = _calculate_level(random_int, args.timesteps, 3)
+            level = _calculate_level(random_int, args.timesteps, len(args.dim_mults))
+            if level > (len(args.dim_mults) - 1):
+                print(
+                    f"WARNING: level is larger than the number of dim_mults. Level: {level}. Random int: {random_int}"
+                )
 
             image = _downscale(image, level, args.image_size)
             noise = torch.randn_like(image).to(device)
