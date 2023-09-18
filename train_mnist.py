@@ -12,9 +12,10 @@ import os
 import math
 import argparse
 import wandb
+import time
 
 
-def create_mnist_dataloaders(batch_size, image_size=28, num_workers=4):
+def create_mnist_dataloaders(batch_size, image_size=28, num_workers=2):
     preprocess = transforms.Compose(
         [
             transforms.Resize(image_size),
@@ -79,7 +80,9 @@ image_size = 32
 
 def main(args):
     wandb.login()
-    wandb.init(project="speeding_up_diffusion", config=args, tags="progessive_scaling")
+    wandb.init(
+        project="speeding_up_diffusion", config=args, tags=["progessive_scaling"]
+    )
 
     device = "cpu" if args.cpu else "cuda"
     train_dataloader, test_dataloader = create_mnist_dataloaders(
@@ -117,6 +120,7 @@ def main(args):
         model.load_state_dict(ckpt["model"])
 
     global_steps = 0
+    start_time = time.time()
     for i in range(args.epochs):
         model.train()
 
@@ -143,26 +147,23 @@ def main(args):
             global_steps += 1
             total_loss += loss.detach().cpu().item()
 
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+
         avg_loss = total_loss / len(train_dataloader)
         print(
-            "Epoch[{}/{}: {:.5f}".format(
+            "Epoch[{}/{}]: Loss: {:.5f}, Time: {:.2f}s".format(
                 i + 1,
                 args.epochs,
                 avg_loss,
+                elapsed_time,
             )
-        )
-        wandb.log(
-            {
-                "epoch": i + 1,
-                "loss": avg_loss,
-                "lr": scheduler.get_last_lr()[0],
-            }
         )
 
         ckpt = {"model": model.state_dict(), "model_ema": model_ema.state_dict()}
 
         os.makedirs("results", exist_ok=True)
-        ckpt_name = "results/steps_{:0>8}.pt".format(global_steps)
+        ckpt_name = f"results/epoch{i}.pt"
         torch.save(ckpt, ckpt_name)
 
         model_ema.eval()
@@ -170,11 +171,18 @@ def main(args):
 
         save_image(
             samples,
-            "results/steps_{:0>8}.png".format(global_steps),
+            f"results/epoch_{i}.png",
             nrow=int(math.sqrt(args.n_samples)),
         )
         wandb.log(
-            {"example": wandb.Image("results/steps_{:0>8}.png".format(global_steps))}
+            {
+                "epoch": i + 1,
+                "loss": avg_loss,
+                "time": elapsed_time,
+                "global_steps": global_steps,
+                "lr": scheduler.get_last_lr()[0],
+                f"sample": wandb.Image(f"results/epoch_{i}.png"),
+            }
         )
 
     wandb.finish()
