@@ -76,14 +76,14 @@ def parse_args():
 def main(args):
     device = "cpu" if args.cpu else "cuda"
     train_dataloader, test_dataloader = create_mnist_dataloaders(
-        batch_size=args.batch_size, image_size=28
+        batch_size=args.batch_size, image_size=32
     )
     model = MNISTDiffusion(
         timesteps=args.timesteps,
-        image_size=28,
+        image_size=32,
         in_channels=1,
         base_dim=args.model_base_dim,
-        dim_mults=[2, 4],
+        dim_mults=[2, 4, 8],
     ).to(device)
 
     # torchvision ema setting
