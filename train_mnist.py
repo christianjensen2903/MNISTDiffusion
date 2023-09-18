@@ -65,7 +65,7 @@ def parse_args():
         "--log_freq",
         type=int,
         help="training log message printing frequence",
-        default=10,
+        default=100,
     )
     parser.add_argument("--cpu", action="store_true", help="cpu training")
 
@@ -119,6 +119,8 @@ def main(args):
     global_steps = 0
     for i in range(args.epochs):
         model.train()
+
+        total_loss = 0
         for j, (image, target) in enumerate(train_dataloader):
             random_int = torch.randint(0, args.timesteps, (1,))
             level = _calculate_level(random_int, args.timesteps, 3)
@@ -139,33 +141,29 @@ def main(args):
             if global_steps % args.model_ema_steps == 0:
                 model_ema.update_parameters(model)
             global_steps += 1
-            if j % args.log_freq == 0:
-                print(
-                    "Epoch[{}/{}],Step[{}/{}],loss:{:.5f},lr:{:.5f}".format(
-                        i + 1,
-                        args.epochs,
-                        j,
-                        len(train_dataloader),
-                        loss.detach().cpu().item(),
-                        scheduler.get_last_lr()[0],
-                    )
-                )
-                wandb.log(
-                    {
-                        "epoch": i + 1,
-                        "step": j,
-                        "global_steo": global_steps,
-                        "loss": loss.detach().cpu().item(),
-                        "lr": scheduler.get_last_lr()[0],
-                    }
-                )
+            total_loss += loss.detach().cpu().item()
+
+        avg_loss = total_loss / len(train_dataloader)
+        print(
+            "Epoch[{}/{}: {:.5f}".format(
+                i + 1,
+                args.epochs,
+                avg_loss,
+            )
+        )
+        wandb.log(
+            {
+                "epoch": i + 1,
+                "loss": avg_loss,
+                "lr": scheduler.get_last_lr()[0],
+            }
+        )
+
         ckpt = {"model": model.state_dict(), "model_ema": model_ema.state_dict()}
 
         os.makedirs("results", exist_ok=True)
         ckpt_name = "results/steps_{:0>8}.pt".format(global_steps)
         torch.save(ckpt, ckpt_name)
-        wandb.log_artifact(ckpt)
-        wandb.save(ckpt_name)
 
         model_ema.eval()
         samples = model_ema.module.sampling(args.n_samples, device=device)
@@ -175,8 +173,8 @@ def main(args):
             "results/steps_{:0>8}.png".format(global_steps),
             nrow=int(math.sqrt(args.n_samples)),
         )
-        wandb.log_artifact(
-            {"xample": wandb.Image("results/steps_{:0>8}.png".format(global_steps))}
+        wandb.log(
+            {"example": wandb.Image("results/steps_{:0>8}.png".format(global_steps))}
         )
 
     wandb.finish()
