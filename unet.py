@@ -202,8 +202,13 @@ class Unet(nn.Module):
             ResidualBottleneck(channels[-1][1], channels[-1][1] // 2),
         )
 
-        self.final_conv = nn.Conv2d(
-            in_channels=channels[0][0] // 2, out_channels=out_channels, kernel_size=1
+        self.final_convs = nn.ModuleList(
+            [
+                nn.Conv2d(
+                    in_channels=c[0] // 2, out_channels=out_channels, kernel_size=1
+                )
+                for c in channels
+            ]
         )
 
     def forward(self, x, t=None, level=None):
@@ -227,7 +232,7 @@ class Unet(nn.Module):
             encoder_shortcuts,
         ):
             x = decoder_block(x, shortcut, t)
-        x = self.final_conv(x)
+        x = self.final_convs[level](x)
 
         return x
 
