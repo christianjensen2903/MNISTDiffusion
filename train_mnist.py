@@ -12,13 +12,12 @@ import os
 import math
 import argparse
 import wandb
-import time
 
 
 def create_mnist_dataloaders(batch_size, image_size=28, num_workers=2):
     preprocess = transforms.Compose(
         [
-            transforms.Resize(image_size),
+            transforms.Resize(image_size, antialias=True),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
@@ -120,7 +119,6 @@ def main(args):
         model.load_state_dict(ckpt["model"])
 
     global_steps = 0
-    start_time = time.time()
     for i in range(args.epochs):
         model.train()
 
@@ -147,16 +145,12 @@ def main(args):
             global_steps += 1
             total_loss += loss.detach().cpu().item()
 
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-
         avg_loss = total_loss / len(train_dataloader)
         print(
-            "Epoch[{}/{}]: Loss: {:.5f}, Time: {:.2f}s".format(
+            "Epoch[{}/{}]:{:.5f}".format(
                 i + 1,
                 args.epochs,
                 avg_loss,
-                elapsed_time,
             )
         )
 
@@ -178,7 +172,6 @@ def main(args):
             {
                 "epoch": i + 1,
                 "loss": avg_loss,
-                "time": elapsed_time,
                 "global_steps": global_steps,
                 "lr": scheduler.get_last_lr()[0],
                 f"sample": wandb.Image(f"results/epoch_{i}.png"),
