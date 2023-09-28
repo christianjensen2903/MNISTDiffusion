@@ -10,7 +10,6 @@ class ArgsModel(BaseModel):
     n_samples: int = 36  # Samples after every epoch trained
     log_freq: int = 10
     image_size: int = 32
-    dim_mults: list[int] = [2, 4]
     w = 0.5
     n_classes: int = 10
     log_wandb: bool = False
