@@ -35,7 +35,9 @@ def save_generated_samples(
     model.eval()
     with torch.no_grad():
         n_sample = 4 * args.n_classes
-        x_gen, _ = model.sample(n_sample, (1, 28, 28), device, guide_w=args.w)
+        x_gen, _ = model.sample(
+            n_sample, (1, args.image_size, args.image_size), device, guide_w=args.w
+        )
 
         # append some real images at bottom, order by class also
         x_real = get_real_samples(test_dataloader, x_gen, args, device)
