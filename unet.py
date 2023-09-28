@@ -90,9 +90,9 @@ class EmbedFC(nn.Module):
         return self.model(x)
 
 
-class ContextUnet(nn.Module):
+class Unet(nn.Module):
     def __init__(self, in_channels, n_feat=256, n_classes=10):
-        super(ContextUnet, self).__init__()
+        super(Unet, self).__init__()
 
         self.in_channels = in_channels
         self.n_feat = n_feat
@@ -128,36 +128,18 @@ class ContextUnet(nn.Module):
             nn.Conv2d(n_feat, self.in_channels, 3, 1, 1),
         )
 
-    def forward(self, x, c, t, context_mask):
-        # x is (noisy) image, c is context label, t is timestep,
-        # context_mask says which samples to block the context on
-
+    def forward(self, x, t):
         x = self.init_conv(x)
         down1 = self.down1(x)
         down2 = self.down2(down1)
         hiddenvec = self.to_vec(down2)
 
-        # convert context to one hot embedding
-        c = nn.functional.one_hot(c, num_classes=self.n_classes).type(torch.float)
-
-        # mask out context if context_mask == 1
-        context_mask = context_mask[:, None]
-        context_mask = context_mask.repeat(1, self.n_classes)
-        context_mask = -1 * (1 - context_mask)  # need to flip 0 <-> 1
-        c = c * context_mask
-
-        # embed context, time step
-        cemb1 = self.contextembed1(c).view(-1, self.n_feat * 2, 1, 1)
+        # embed time step
         temb1 = self.timeembed1(t).view(-1, self.n_feat * 2, 1, 1)
-        cemb2 = self.contextembed2(c).view(-1, self.n_feat, 1, 1)
         temb2 = self.timeembed2(t).view(-1, self.n_feat, 1, 1)
 
-        # could concatenate the context embedding here instead of adaGN
-        # hiddenvec = torch.cat((hiddenvec, temb1, cemb1), 1)
-
         up1 = self.up0(hiddenvec)
-        # up2 = self.up1(up1, down2) # if want to avoid add and multiply embeddings
-        up2 = self.up1(cemb1 * up1 + temb1, down2)  # add and multiply embeddings
-        up3 = self.up2(cemb2 * up2 + temb2, down1)
+        up2 = self.up1(up1 + temb1, down2)  # add and multiply embeddings
+        up3 = self.up2(up2 + temb2, down1)
         out = self.out(torch.cat((up3, x), 1))
         return out
