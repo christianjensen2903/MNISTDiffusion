@@ -11,6 +11,8 @@ class ArgsModel(BaseModel):
     log_freq: int = 10
     image_size: int = 32
     w = 0.5
+    drop_prob = 0.1
+    betas = (1e-4, 0.02)
     n_classes: int = 10
     log_wandb: bool = False
     save_model = False
