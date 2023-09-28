@@ -9,6 +9,9 @@ from data_loader import create_mnist_dataloaders
 from utils import *
 from args import ArgsModel
 from mnist_classifier import SimpleCNN
+from torchvision.models import inception_v3
+from scipy.linalg import sqrtm
+import numpy as np
 
 
 def init_wandb(args: ArgsModel) -> None:
@@ -28,6 +31,9 @@ def train_model(
     device: str,
 ) -> None:
     optim = torch.optim.Adam(model.parameters(), lr=args.lr)
+
+    inception_model = inception_v3(pretrained=True, transform_input=True).to(device)
+    inception_model.eval()
 
     for ep in range(args.epochs):
         print(f"epoch {ep}")
@@ -62,7 +68,11 @@ def train_model(
                 guide_w=args.w,
             )
 
-        accuracy = evaluate_model(samples, labels, device)
+        real = get_real_samples(train_dataloader, samples, args, device)
+
+        accuracy = calculate_accuracy(samples, labels, device)
+        mse = calculate_mse(samples, real)
+        fid = calculate_fid(samples, real, inception_model)
 
         save_images(samples, path=args.save_dir + f"image_ep{ep}.png")
 
@@ -72,6 +82,8 @@ def train_model(
                     "epoch": ep + 1,
                     "train_loss": loss_ema,
                     "accuracy": accuracy,
+                    "mse": mse,
+                    "fid": fid,
                     f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
                 }
             )
@@ -80,7 +92,7 @@ def train_model(
         save_final_model(model, args, ep)
 
 
-def evaluate_model(x, c, device: str) -> float:
+def calculate_accuracy(x, c, device: str) -> float:
     """
     Evaluate the model's accuracy.
     """
@@ -94,6 +106,41 @@ def evaluate_model(x, c, device: str) -> float:
     correct = (predicted == c).sum().item()
     accuracy = 100 * correct / total
     return accuracy
+
+
+def calculate_mse(x_gen: torch.Tensor, x_real: torch.Tensor) -> float:
+    """
+    Calculate the mean squared error between the generated and real images.
+    """
+    return torch.mean((x_gen - x_real) ** 2)
+
+
+def get_inception_features(imgs, model):
+    """
+    Get the feature activations from the penultimate layer of the Inception-v3 model.
+    """
+    # Convert grayscale images to RGB format by repeating the channel three times
+    if imgs.size(1) == 1:  # If it's grayscale
+        imgs = imgs.repeat(1, 3, 1, 1)  # Convert C x H x W to 3C x H x W
+
+    features = model(imgs).detach()
+    return features
+
+
+def calculate_fid(x_gen: torch.Tensor, x_real: torch.Tensor, inception_model) -> float:
+    real_features = get_inception_features(x_real, inception_model)
+    fake_features = get_inception_features(x_gen, inception_model)
+    mu1, sigma1 = real_features.mean(0), np.cov(real_features, rowvar=False)
+    mu2, sigma2 = fake_features.mean(0), np.cov(fake_features, rowvar=False)
+
+    ssdiff = np.sum((mu1 - mu2) ** 2.0)
+    covmean = sqrtm(sigma1.dot(sigma2))
+
+    if np.iscomplexobj(covmean):
+        covmean = covmean.real
+
+    fid = ssdiff + np.trace(sigma1 + sigma2 - 2.0 * covmean)
+    return fid
 
 
 def main(args: ArgsModel):
