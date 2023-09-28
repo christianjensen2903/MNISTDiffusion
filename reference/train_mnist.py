@@ -16,7 +16,7 @@ def init_wandb(args: ArgsModel) -> None:
         wandb.init(
             project="speeding_up_diffusion",
             config=args.dict(),
-            tags=["progressive_scaling", "mnist"],
+            tags=["reference", "mnist"],
         )
 
 
