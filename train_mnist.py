@@ -13,6 +13,7 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 import wandb
 from pydantic import BaseModel
 from tqdm import tqdm
+import os
 
 
 def create_mnist_dataloaders(batch_size, image_size=28, num_workers=2):
@@ -100,10 +101,10 @@ def train_model(
 
         save_generated_samples(model, train_dataloader, args, device, ep)
         if args.log_wandb:
-            log_wandb(ep, loss_ema, args, ep, 0)
+            log_wandb(ep, loss_ema, args, ep)
 
-        if args.save_model and ep == int(args.epochs - 1):
-            save_final_model(model, args, ep)
+    if args.save_model:
+        save_final_model(model, args, ep)
 
 
 def log_wandb(
@@ -157,7 +158,7 @@ def get_real_samples(
                 except:
                     idx = 0
                 x_real[k + (j * args.n_classes)] = x[idx]
-        if batch * args.batch_size >= n_sample:  # Assuming batch_size is part of args
+        if batch * args.batch_size >= n_sample:
             break
 
     return x_real
@@ -231,6 +232,9 @@ def save_final_model(model: torch.nn.Module, args: ArgsModel, ep: int) -> None:
 
 def main(args: ArgsModel):
     init_wandb(args)
+
+    if not os.path.exists(args.save_dir):
+        os.makedirs(args.save_dir)
 
     device = setup_device()
 
