@@ -8,8 +8,6 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import MNIST
 from torchvision.utils import save_image, make_grid
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, PillowWriter
 import wandb
 from pydantic import BaseModel
 from tqdm import tqdm
@@ -132,15 +130,12 @@ def save_generated_samples(
     model.eval()
     with torch.no_grad():
         n_sample = 4 * args.n_classes
-        x_gen, x_gen_store = model.sample(n_sample, (1, 28, 28), device, guide_w=args.w)
+        x_gen, _ = model.sample(n_sample, (1, 28, 28), device, guide_w=args.w)
 
         # append some real images at bottom, order by class also
         x_real = get_real_samples(test_dataloader, x_gen, args, device)
 
         save_images(x_gen, x_real, args, ep)
-
-        if ep % 5 == 0 or ep == int(args.epochs - 1):
-            create_gif(x_gen_store, args, n_sample, ep)
 
 
 def get_real_samples(
@@ -172,55 +167,6 @@ def save_images(
     path = args.save_dir + f"image_ep{ep}.png"
     save_image(grid, path)
     print("saved image at " + path)
-
-
-def create_gif(
-    x_gen_store: torch.Tensor, args: ArgsModel, n_sample: int, ep: int
-) -> None:
-    fig, axs = plt.subplots(
-        nrows=int(n_sample / args.n_classes),
-        ncols=args.n_classes,
-        sharex=True,
-        sharey=True,
-        figsize=(8, 3),
-    )
-
-    def animate_diff(i: int) -> list:
-        print(
-            f"gif animating frame {i} of {x_gen_store.shape[0]}",
-            end="\r",
-        )
-        plots = []
-        for row in range(int(n_sample / args.n_classes)):
-            for col in range(args.n_classes):
-                axs[row, col].clear()
-                axs[row, col].set_xticks([])
-                axs[row, col].set_yticks([])
-                plots.append(
-                    axs[row, col].imshow(
-                        -x_gen_store[i, (row * args.n_classes) + col, 0],
-                        cmap="gray",
-                        vmin=(-x_gen_store[i]).min(),
-                        vmax=(-x_gen_store[i]).max(),
-                    )
-                )
-        return plots
-
-    ani = FuncAnimation(
-        fig,
-        animate_diff,
-        interval=200,
-        blit=False,
-        repeat=True,
-        frames=x_gen_store.shape[0],
-    )
-    ani.save(
-        args.save_dir + f"gif_ep{ep}.gif",
-        dpi=100,
-        writer=PillowWriter(fps=5),
-    )
-    print("saved image at " + args.save_dir + f"gif_ep{ep}.gif")
-    plt.close(fig)
 
 
 def save_final_model(model: torch.nn.Module, args: ArgsModel, ep: int) -> None:
