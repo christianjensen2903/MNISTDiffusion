@@ -7,7 +7,7 @@ class ArgsModel(BaseModel):
     n_feat = 128
     epochs: int = 15
     lr: float = 1e-4
-    n_samples: int = 36  # Samples after every epoch trained
+    n_samples: int = 10  # Samples after every epoch trained
     log_freq: int = 10
     image_size: int = 32
     w = 0.5

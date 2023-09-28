@@ -2,27 +2,13 @@ import torch
 from torchvision.utils import save_image
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image, make_grid
-import wandb
 from args import ArgsModel
+from scipy.linalg import sqrtm
+import numpy as np
 
 
 def setup_device() -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def log_wandb(
-    i: int,
-    train_loss: float,
-    args: ArgsModel,
-    ep: int,
-) -> None:
-    wandb.log(
-        {
-            "epoch": i + 1,
-            "train_loss": train_loss,
-            f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
-        }
-    )
 
 
 def save_generated_samples(
@@ -34,7 +20,7 @@ def save_generated_samples(
 ) -> None:
     model.eval()
     with torch.no_grad():
-        n_sample = 4 * args.n_classes
+        n_sample = args.n_samples * args.n_classes
         x_gen, _ = model.sample(
             n_sample, (1, args.image_size, args.image_size), device, guide_w=args.w
         )
@@ -66,14 +52,31 @@ def get_real_samples(
     return x_real
 
 
-def save_images(
-    x_gen: torch.Tensor, x_real: torch.Tensor, args: ArgsModel, ep: int
-) -> None:
-    x_all = torch.cat([x_gen, x_real])
-    grid = make_grid(x_all * -1 + 1, nrow=10)
-    path = args.save_dir + f"image_ep{ep}.png"
+def get_inception_features(samples, model):
+    features = model(samples).detach()
+    return features
+
+
+def compute_fid(real_samples, generated_samples, inception_model):
+    real_features = get_inception_features(real_samples, inception_model)
+    fake_features = get_inception_features(generated_samples, inception_model)
+
+    mu1, sigma1 = real_features.mean(0), np.cov(real_features, rowvar=False)
+    mu2, sigma2 = fake_features.mean(0), np.cov(fake_features, rowvar=False)
+
+    ssdiff = np.sum((mu1 - mu2) ** 2.0)
+    covmean = sqrtm(sigma1.dot(sigma2))
+
+    if np.iscomplexobj(covmean):
+        covmean = covmean.real
+
+    fid = ssdiff + np.trace(sigma1 + sigma2 - 2.0 * covmean)
+    return fid
+
+
+def save_images(x_gen: torch.Tensor, path: str) -> None:
+    grid = make_grid(x_gen * -1 + 1, nrow=10)
     save_image(grid, path)
-    print("saved image at " + path)
 
 
 def save_final_model(model: torch.nn.Module, args: ArgsModel, ep: int) -> None:

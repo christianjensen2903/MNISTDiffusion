@@ -8,6 +8,7 @@ import os
 from data_loader import create_mnist_dataloaders
 from utils import *
 from args import ArgsModel
+from torchvision.models import inception_v3
 
 
 def init_wandb(args: ArgsModel) -> None:
@@ -20,11 +21,17 @@ def init_wandb(args: ArgsModel) -> None:
         )
 
 
-
 def train_model(
-    model: torch.nn.Module, train_dataloader: DataLoader, args: ArgsModel, device: str
+    model: DDPM,
+    train_dataloader: DataLoader,
+    test_dataloader: DataLoader,
+    args: ArgsModel,
+    device: str,
 ) -> None:
     optim = torch.optim.Adam(model.parameters(), lr=args.lr)
+
+    inception_model = inception_v3(pretrained=True, transform_input=True).to(device)
+    inception_model.eval()
 
     for ep in range(args.epochs):
         print(f"epoch {ep}")
@@ -50,9 +57,33 @@ def train_model(
             pbar.set_description(f"loss: {loss_ema:.4f}")
             optim.step()
 
+        total_samples = args.n_samples * args.n_classes
+        with torch.no_grad():
+            generated_samples, _ = model.sample(
+                total_samples,
+                (1, args.image_size, args.image_size),
+                device,
+                guide_w=args.w,
+            )
+
+        real_samples = get_real_samples(
+            test_dataloader, generated_samples, args, device
+        )
+
+        fid = compute_fid(real_samples, generated_samples, inception_model)
+
+        save_images(generated_samples, path=args.save_dir + f"image_ep{ep}.png")
+
         save_generated_samples(model, train_dataloader, args, device, ep)
         if args.log_wandb:
-            log_wandb(ep, loss_ema, args, ep)
+            wandb.log(
+                {
+                    "epoch": ep + 1,
+                    "train_loss": loss_ema,
+                    "fid": fid,
+                    f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
+                }
+            )
 
     if args.save_model:
         save_final_model(model, args, ep)
@@ -81,7 +112,7 @@ def main(args: ArgsModel):
     )
     model.to(device)
 
-    train_model(model, train_dataloader, args, device)
+    train_model(model, train_dataloader, test_dataloader, args, device)
 
 
 if __name__ == "__main__":
