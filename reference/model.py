@@ -1,115 +1,124 @@
-import torch.nn as nn
 import torch
-import math
-from unet import Unet
-from tqdm import tqdm
-
-class MNISTDiffusion(nn.Module):
-    def __init__(self,image_size,in_channels,time_embedding_dim=256,timesteps=1000,base_dim=32,dim_mults= [1, 2, 4, 8]):
-        super().__init__()
-        self.timesteps=timesteps
-        self.in_channels=in_channels
-        self.image_size=image_size
-
-        betas=self._cosine_variance_schedule(timesteps)
-
-        alphas=1.-betas
-        alphas_cumprod=torch.cumprod(alphas,dim=-1)
-
-        self.register_buffer("betas",betas)
-        self.register_buffer("alphas",alphas)
-        self.register_buffer("alphas_cumprod",alphas_cumprod)
-        self.register_buffer("sqrt_alphas_cumprod",torch.sqrt(alphas_cumprod))
-        self.register_buffer("sqrt_one_minus_alphas_cumprod",torch.sqrt(1.-alphas_cumprod))
-
-        self.model=Unet(timesteps,time_embedding_dim,in_channels,in_channels,base_dim,dim_mults)
-
-    def forward(self,x,noise):
-        # x:NCHW
-        t=torch.randint(0,self.timesteps,(x.shape[0],)).to(x.device)
-        x_t=self._forward_diffusion(x,t,noise)
-        pred_noise=self.model(x_t,t)
-
-        return pred_noise
-
-    @torch.no_grad()
-    def sampling(self,n_samples,clipped_reverse_diffusion=True,device="cuda"):
-        x_t=torch.randn((n_samples,self.in_channels,self.image_size,self.image_size)).to(device)
-        for i in tqdm(range(self.timesteps-1,-1,-1),desc="Sampling"):
-            noise=torch.randn_like(x_t).to(device)
-            t=torch.tensor([i for _ in range(n_samples)]).to(device)
-
-            if clipped_reverse_diffusion:
-                x_t=self._reverse_diffusion_with_clip(x_t,t,noise)
-            else:
-                x_t=self._reverse_diffusion(x_t,t,noise)
-
-        x_t=(x_t+1.)/2. #[-1,1] to [0,1]
-
-        return x_t
-    
-    def _cosine_variance_schedule(self,timesteps,epsilon= 0.008):
-        steps=torch.linspace(0,timesteps,steps=timesteps+1,dtype=torch.float32)
-        f_t=torch.cos(((steps/timesteps+epsilon)/(1.0+epsilon))*math.pi*0.5)**2
-        betas=torch.clip(1.0-f_t[1:]/f_t[:timesteps],0.0,0.999)
-
-        return betas
-
-    def _forward_diffusion(self,x_0,t,noise):
-        assert x_0.shape==noise.shape
-        #q(x_{t}|x_{t-1})
-        return self.sqrt_alphas_cumprod.gather(-1,t).reshape(x_0.shape[0],1,1,1)*x_0+ \
-                self.sqrt_one_minus_alphas_cumprod.gather(-1,t).reshape(x_0.shape[0],1,1,1)*noise
+import torch.nn as nn
+import numpy as np
 
 
-    @torch.no_grad()
-    def _reverse_diffusion(self,x_t,t,noise):
-        '''
-        p(x_{t-1}|x_{t})-> mean,std
+def ddpm_schedules(beta1, beta2, T):
+    """
+    Returns pre-computed schedules for DDPM sampling, training process.
+    """
+    assert beta1 < beta2 < 1.0, "beta1 and beta2 must be in (0, 1)"
 
-        pred_noise-> pred_mean and pred_std
-        '''
-        pred=self.model(x_t,t)
+    beta_t = (beta2 - beta1) * torch.arange(0, T + 1, dtype=torch.float32) / T + beta1
+    sqrt_beta_t = torch.sqrt(beta_t)
+    alpha_t = 1 - beta_t
+    log_alpha_t = torch.log(alpha_t)
+    alphabar_t = torch.cumsum(log_alpha_t, dim=0).exp()
 
-        alpha_t=self.alphas.gather(-1,t).reshape(x_t.shape[0],1,1,1)
-        alpha_t_cumprod=self.alphas_cumprod.gather(-1,t).reshape(x_t.shape[0],1,1,1)
-        beta_t=self.betas.gather(-1,t).reshape(x_t.shape[0],1,1,1)
-        sqrt_one_minus_alpha_cumprod_t=self.sqrt_one_minus_alphas_cumprod.gather(-1,t).reshape(x_t.shape[0],1,1,1)
-        mean=(1./torch.sqrt(alpha_t))*(x_t-((1.0-alpha_t)/sqrt_one_minus_alpha_cumprod_t)*pred)
+    sqrtab = torch.sqrt(alphabar_t)
+    oneover_sqrta = 1 / torch.sqrt(alpha_t)
 
-        if t.min()>0:
-            alpha_t_cumprod_prev=self.alphas_cumprod.gather(-1,t-1).reshape(x_t.shape[0],1,1,1)
-            std=torch.sqrt(beta_t*(1.-alpha_t_cumprod_prev)/(1.-alpha_t_cumprod))
-        else:
-            std=0.0
+    sqrtmab = torch.sqrt(1 - alphabar_t)
+    mab_over_sqrtmab_inv = (1 - alpha_t) / sqrtmab
 
-        return mean+std*noise 
+    return {
+        "alpha_t": alpha_t,  # \alpha_t
+        "oneover_sqrta": oneover_sqrta,  # 1/\sqrt{\alpha_t}
+        "sqrt_beta_t": sqrt_beta_t,  # \sqrt{\beta_t}
+        "alphabar_t": alphabar_t,  # \bar{\alpha_t}
+        "sqrtab": sqrtab,  # \sqrt{\bar{\alpha_t}}
+        "sqrtmab": sqrtmab,  # \sqrt{1-\bar{\alpha_t}}
+        "mab_over_sqrtmab": mab_over_sqrtmab_inv,  # (1-\alpha_t)/\sqrt{1-\bar{\alpha_t}}
+    }
 
 
-    @torch.no_grad()
-    def _reverse_diffusion_with_clip(self,x_t,t,noise): 
-        '''
-        p(x_{0}|x_{t}),q(x_{t-1}|x_{0},x_{t})->mean,std
+class DDPM(nn.Module):
+    def __init__(self, nn_model, betas, n_T, device, drop_prob=0.1):
+        super(DDPM, self).__init__()
+        self.nn_model = nn_model.to(device)
 
-        pred_noise -> pred_x_0 (clip to [-1.0,1.0]) -> pred_mean and pred_std
-        '''
-        pred=self.model(x_t,t)
-        alpha_t=self.alphas.gather(-1,t).reshape(x_t.shape[0],1,1,1)
-        alpha_t_cumprod=self.alphas_cumprod.gather(-1,t).reshape(x_t.shape[0],1,1,1)
-        beta_t=self.betas.gather(-1,t).reshape(x_t.shape[0],1,1,1)
-        
-        x_0_pred=torch.sqrt(1. / alpha_t_cumprod)*x_t-torch.sqrt(1. / alpha_t_cumprod - 1.)*pred
-        x_0_pred.clamp_(-1., 1.)
+        # register_buffer allows accessing dictionary produced by ddpm_schedules
+        # e.g. can access self.sqrtab later
+        for k, v in ddpm_schedules(betas[0], betas[1], n_T).items():
+            self.register_buffer(k, v)
 
-        if t.min()>0:
-            alpha_t_cumprod_prev=self.alphas_cumprod.gather(-1,t-1).reshape(x_t.shape[0],1,1,1)
-            mean= (beta_t * torch.sqrt(alpha_t_cumprod_prev) / (1. - alpha_t_cumprod))*x_0_pred +\
-                 ((1. - alpha_t_cumprod_prev) * torch.sqrt(alpha_t) / (1. - alpha_t_cumprod))*x_t
+        self.n_T = n_T
+        self.device = device
+        self.drop_prob = drop_prob
+        self.loss_mse = nn.MSELoss()
 
-            std=torch.sqrt(beta_t*(1.-alpha_t_cumprod_prev)/(1.-alpha_t_cumprod))
-        else:
-            mean=(beta_t / (1. - alpha_t_cumprod))*x_0_pred #alpha_t_cumprod_prev=1 since 0!=1
-            std=0.0
+    def forward(self, x, c):
+        """
+        this method is used in training, so samples t and noise randomly
+        """
 
-        return mean+std*noise 
-    
+        _ts = torch.randint(1, self.n_T + 1, (x.shape[0],)).to(
+            self.device
+        )  # t ~ Uniform(0, n_T)
+        noise = torch.randn_like(x)  # eps ~ N(0, 1)
+
+        x_t = (
+            self.sqrtab[_ts, None, None, None] * x
+            + self.sqrtmab[_ts, None, None, None] * noise
+        )  # This is the x_t, which is sqrt(alphabar) x_0 + sqrt(1-alphabar) * eps
+        # We should predict the "error term" from this x_t. Loss is what we return.
+
+        # dropout context with some probability
+        context_mask = torch.bernoulli(torch.zeros_like(c) + self.drop_prob).to(
+            self.device
+        )
+
+        # return MSE between added noise, and our predicted noise
+        return self.loss_mse(noise, self.nn_model(x_t, c, _ts / self.n_T, context_mask))
+
+    def sample(self, n_sample, size, device, guide_w=0.0):
+        # we follow the guidance sampling scheme described in 'Classifier-Free Diffusion Guidance'
+        # to make the fwd passes efficient, we concat two versions of the dataset,
+        # one with context_mask=0 and the other context_mask=1
+        # we then mix the outputs with the guidance scale, w
+        # where w>0 means more guidance
+
+        x_i = torch.randn(n_sample, *size).to(
+            device
+        )  # x_T ~ N(0, 1), sample initial noise
+        c_i = torch.arange(0, 10).to(
+            device
+        )  # context for us just cycles throught the mnist labels
+        c_i = c_i.repeat(int(n_sample / c_i.shape[0]))
+
+        # don't drop context at test time
+        context_mask = torch.zeros_like(c_i).to(device)
+
+        # double the batch
+        c_i = c_i.repeat(2)
+        context_mask = context_mask.repeat(2)
+        context_mask[n_sample:] = 1.0  # makes second half of batch context free
+
+        x_i_store = []  # keep track of generated steps in case want to plot something
+        print()
+        for i in range(self.n_T, 0, -1):
+            print(f"sampling timestep {i}", end="\r")
+            t_is = torch.tensor([i / self.n_T]).to(device)
+            t_is = t_is.repeat(n_sample, 1, 1, 1)
+
+            # double batch
+            x_i = x_i.repeat(2, 1, 1, 1)
+            t_is = t_is.repeat(2, 1, 1, 1)
+
+            z = torch.randn(n_sample, *size).to(device) if i > 1 else 0
+
+            # split predictions and compute weighting
+            eps = self.nn_model(x_i, c_i, t_is, context_mask)
+            eps1 = eps[:n_sample]
+            eps2 = eps[n_sample:]
+            eps = (1 + guide_w) * eps1 - guide_w * eps2
+            x_i = x_i[:n_sample]
+            x_i = (
+                self.oneover_sqrta[i] * (x_i - eps * self.mab_over_sqrtmab[i])
+                + self.sqrt_beta_t[i] * z
+            )
+            if i % 20 == 0 or i == self.n_T or i < 8:
+                x_i_store.append(x_i.detach().cpu().numpy())
+
+        x_i_store = np.array(x_i_store)
+        return x_i, x_i_store
