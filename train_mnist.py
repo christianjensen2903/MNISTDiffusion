@@ -80,22 +80,18 @@ def train_model(
         save_final_model(model, args, ep)
 
 
-def evaluate_model(samples, labels, device: str) -> float:
+def evaluate_model(x, c, device: str) -> float:
     """
     Evaluate the model's accuracy.
     """
     # Load mnist_classifier_weights.pth
     model = SimpleCNN(args.image_size).to(device)
 
-    correct = 0
-    total = 0
-
-    for x, c in zip(samples, labels):
-        x, c = x.to(device), c.to(device)
-        outputs = model(x, c)  # Assuming the model outputs logits directly
-        _, predicted = torch.max(outputs, 1)
-        total += c.size(0)
-        correct += (predicted == c).sum().item()
+    x, c = x.to(device), c.to(device)
+    outputs = model(x)
+    _, predicted = torch.max(outputs.data, 1)
+    total = c.size(0)
+    correct = (predicted == c).sum().item()
     accuracy = 100 * correct / total
     return accuracy
 

@@ -117,4 +117,4 @@ class DDPM(nn.Module):
                 + self.sqrt_beta_t[i] * z
             )
 
-        return x_i, c_i
+        return x_i, c_i[:n_sample]
