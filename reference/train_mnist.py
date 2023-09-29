@@ -18,7 +18,7 @@ def init_wandb(args: ArgsModel) -> None:
         wandb.init(
             project="speeding_up_diffusion",
             config=args.dict(),
-            tags=["progressive_scaling", "mnist"],
+            tags=["reference", "mnist"],
         )
 
 
@@ -75,10 +75,7 @@ def train_model(
                 guide_w=args.w,
             )
 
-        real = get_real_samples(train_dataloader, samples, args, device)
-
         accuracy = calculate_accuracy(samples, labels, device)
-        mse = calculate_mse(samples[5 * args.n_classes], real)
 
         save_images(samples, path=args.save_dir + f"image_ep{ep}.png")
 
@@ -88,7 +85,6 @@ def train_model(
                     "training_time": accumulated_time,
                     "train_loss": loss_ema,
                     "accuracy": accuracy,
-                    "mse": mse,
                     f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
                 }
             )
@@ -110,13 +106,6 @@ def calculate_accuracy(x, c, device: str) -> float:
     correct = (predicted == c).sum().item()
     accuracy = 100 * correct / total
     return accuracy
-
-
-def calculate_mse(x_gen: torch.Tensor, x_real: torch.Tensor) -> float:
-    """
-    Calculate the mean squared error between the generated and real images.
-    """
-    return torch.mean((x_gen - x_real) ** 2)
 
 
 def main(args: ArgsModel):
