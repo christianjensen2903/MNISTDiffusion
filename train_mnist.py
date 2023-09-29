@@ -66,32 +66,32 @@ def train_model(
 
         print(f"Training time up to epoch {ep}: {accumulated_time:.2f} seconds")
 
-    total_samples = args.n_samples * args.n_classes
-    with torch.no_grad():
-        samples, labels = model.sample(
-            total_samples,
-            (1, args.image_size, args.image_size),
-            device,
-            guide_w=args.w,
-        )
+        total_samples = args.n_samples * args.n_classes
+        with torch.no_grad():
+            samples, labels = model.sample(
+                total_samples,
+                (1, args.image_size, args.image_size),
+                device,
+                guide_w=args.w,
+            )
 
-    real = get_real_samples(train_dataloader, samples, args, device)
+        real = get_real_samples(train_dataloader, samples, args, device)
 
-    accuracy = calculate_accuracy(samples, labels, device)
-    mse = calculate_mse(samples, real)
+        accuracy = calculate_accuracy(samples, labels, device)
+        mse = calculate_mse(samples, real)
 
-    save_images(samples, path=args.save_dir + f"image_ep{ep}.png")
+        save_images(samples, path=args.save_dir + f"image_ep{ep}.png")
 
-    if args.log_wandb:
-        wandb.log(
-            {
-                "training_time": accumulated_time,
-                "train_loss": loss_ema,
-                "accuracy": accuracy,
-                "mse": mse,
-                f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
-            }
-        )
+        if args.log_wandb:
+            wandb.log(
+                {
+                    "training_time": accumulated_time,
+                    "train_loss": loss_ema,
+                    "accuracy": accuracy,
+                    "mse": mse,
+                    f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
+                }
+            )
     if args.save_model:
         save_final_model(model, args, ep)
 
