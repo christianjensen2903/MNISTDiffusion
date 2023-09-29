@@ -78,7 +78,7 @@ def train_model(
         real = get_real_samples(train_dataloader, samples, args, device)
 
         accuracy = calculate_accuracy(samples, labels, device)
-        mse = calculate_mse(samples, real)
+        mse = calculate_mse(samples[5 * args.n_classes], real)
 
         save_images(samples, path=args.save_dir + f"image_ep{ep}.png")
 
