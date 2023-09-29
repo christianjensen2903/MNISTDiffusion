@@ -9,6 +9,7 @@ from data_loader import create_mnist_dataloaders
 from utils import *
 from args import ArgsModel
 from mnist_classifier import SimpleCNN
+import time
 
 
 def init_wandb(args: ArgsModel) -> None:
@@ -29,6 +30,8 @@ def train_model(
 ) -> None:
     optim = torch.optim.Adam(model.parameters(), lr=args.lr)
 
+    accumulated_time = 0.0  # Initialize the accumulated time
+
     for ep in range(args.epochs):
         print(f"epoch {ep}")
         model.train()
@@ -38,6 +41,10 @@ def train_model(
 
         pbar = tqdm(train_dataloader)
         loss_ema = None
+
+        # Start the timer for the current epoch
+        start_time = time.time()
+
         for x, c in pbar:
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
@@ -53,33 +60,38 @@ def train_model(
             pbar.set_description(f"loss: {loss_ema:.4f}")
             optim.step()
 
-        total_samples = args.n_samples * args.n_classes
-        with torch.no_grad():
-            samples, labels = model.sample(
-                total_samples,
-                (1, args.image_size, args.image_size),
-                device,
-                guide_w=args.w,
-            )
+        # End the timer for the current epoch and accumulate the time
+        end_time = time.time()
+        accumulated_time += end_time - start_time
 
-        real = get_real_samples(train_dataloader, samples, args, device)
+        print(f"Training time up to epoch {ep}: {accumulated_time:.2f} seconds")
 
-        accuracy = calculate_accuracy(samples, labels, device)
-        mse = calculate_mse(samples, real)
+    total_samples = args.n_samples * args.n_classes
+    with torch.no_grad():
+        samples, labels = model.sample(
+            total_samples,
+            (1, args.image_size, args.image_size),
+            device,
+            guide_w=args.w,
+        )
 
-        save_images(samples, path=args.save_dir + f"image_ep{ep}.png")
+    real = get_real_samples(train_dataloader, samples, args, device)
 
-        if args.log_wandb:
-            wandb.log(
-                {
-                    "epoch": ep + 1,
-                    "train_loss": loss_ema,
-                    "accuracy": accuracy,
-                    "mse": mse,
-                    f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
-                }
-            )
+    accuracy = calculate_accuracy(samples, labels, device)
+    mse = calculate_mse(samples, real)
 
+    save_images(samples, path=args.save_dir + f"image_ep{ep}.png")
+
+    if args.log_wandb:
+        wandb.log(
+            {
+                "training_time": accumulated_time,
+                "train_loss": loss_ema,
+                "accuracy": accuracy,
+                "mse": mse,
+                f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
+            }
+        )
     if args.save_model:
         save_final_model(model, args, ep)
 
