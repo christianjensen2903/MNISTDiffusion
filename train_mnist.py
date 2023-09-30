@@ -8,7 +8,7 @@ import os
 from data_loader import create_mnist_dataloaders
 from utils import *
 from args import ArgsModel
-from mnist_classifier import SimpleCNN
+from simple_cnn import SimpleCNN
 import time
 
 
@@ -46,6 +46,7 @@ def train_model(
         start_time = time.time()
 
         for x, c in pbar:
+            print(x.shape)
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
 

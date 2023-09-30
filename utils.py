@@ -10,7 +10,7 @@ def setup_device() -> str:
 
 
 def save_images(x_gen: torch.Tensor, path: str) -> None:
-    grid = make_grid(x_gen * -1 + 1, nrow=10)
+    grid = make_grid(x_gen * -1 + 1, nrow=10, value_range=(-1, 1), normalize=True)
     save_image(grid, path)
 
 
