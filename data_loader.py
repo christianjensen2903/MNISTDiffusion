@@ -10,7 +10,6 @@ def create_mnist_dataloaders(batch_size, image_size=28, num_workers=2):
         [
             transforms.Resize(image_size, antialias=True),
             transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
         ]
     )  # [0,1] to [-1,1]
 
