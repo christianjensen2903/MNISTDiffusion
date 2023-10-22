@@ -1,15 +1,30 @@
 import torch
-from model import DDPM
+from noise_ddpm import NoiseDDPM
+from ddpm import DDPM
 from unet import ContextUnet
 from torch.utils.data import DataLoader
-import wandb
-from tqdm import tqdm
-import os
 from data_loader import create_mnist_dataloaders
-from utils import *
-from args import ArgsModel
-from simple_cnn import SimpleCNN
-import time
+import wandb
+from pydantic import BaseModel
+from tqdm import tqdm
+from utils import save_images, save_model, setup_device
+import os
+
+
+class ArgsModel(BaseModel):
+    batch_size: int = 64
+    timesteps: int = 4
+    n_feat = 32
+    epochs: int = 50
+    lr: float = 4e-4
+    betas = (1e-4, 0.02)
+    log_freq: int = 200
+    image_size: int = 16
+    n_classes: int = 10
+    log_wandb: bool = False
+    save_model = False
+    save_dir = "./data/diffusion_outputs10/"
+    models_dir = "./models/"
 
 
 def init_wandb(args: ArgsModel) -> None:
@@ -18,19 +33,14 @@ def init_wandb(args: ArgsModel) -> None:
         wandb.init(
             project="speeding_up_diffusion",
             config=args.dict(),
-            tags=["reference", "mnist"],
+            tags=["progressive_scaling", "mnist"],
         )
 
 
 def train_model(
-    model: DDPM,
-    train_dataloader: DataLoader,
-    args: ArgsModel,
-    device: str,
+    model: DDPM, train_dataloader: DataLoader, args: ArgsModel, device: str
 ) -> None:
     optim = torch.optim.Adam(model.parameters(), lr=args.lr)
-
-    accumulated_time = 0.0  # Initialize the accumulated time
 
     for ep in range(args.epochs):
         print(f"epoch {ep}")
@@ -40,94 +50,75 @@ def train_model(
         optim.param_groups[0]["lr"] = args.lr * (1 - ep / args.epochs)
 
         pbar = tqdm(train_dataloader)
-        loss_ema = None
-
-        # Start the timer for the current epoch
-        start_time = time.time()
+        total_loss = 0
 
         for x, c in pbar:
+            break
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
 
             loss = model(x, c)
             loss.backward()
 
-            if loss_ema is None:
-                loss_ema = loss.item()
-            else:
-                loss_ema = 0.95 * loss_ema + 0.05 * loss.item()
+            total_loss += loss.item()
 
-            pbar.set_description(f"loss: {loss_ema:.4f}")
+            pbar.set_description(f"loss: {loss.item():.4f}")
             optim.step()
 
-        # End the timer for the current epoch and accumulate the time
-        end_time = time.time()
-        accumulated_time += end_time - start_time
-
-        print(f"Training time up to epoch {ep}: {accumulated_time:.2f} seconds")
-
-        total_samples = args.n_samples * args.n_classes
-        with torch.no_grad():
-            samples, labels = model.sample(
-                total_samples,
-                (1, args.image_size, args.image_size),
-                device,
-                guide_w=args.w,
-            )
-
-        accuracy = calculate_accuracy(samples, labels, device)
-
-        save_images(samples, path=args.save_dir + f"image_ep{ep}.png")
-
+        save_generated_samples(model, args, device, ep)
+        avg_loss = total_loss / len(train_dataloader)
         if args.log_wandb:
-            wandb.log(
-                {
-                    "training_time": accumulated_time,
-                    "train_loss": loss_ema,
-                    "accuracy": accuracy,
-                    f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
-                }
-            )
-    if args.save_model:
-        save_final_model(model, args, ep)
+            log_wandb(ep, avg_loss, args)
+
+        if args.save_model and ep == int(args.epochs - 1):
+            save_model(model, args.save_dir + "model.pth")
 
 
-def calculate_accuracy(x, c, device: str) -> float:
-    """
-    Evaluate the model's accuracy.
-    """
-    # Load mnist_classifier_weights.pth
-    model = SimpleCNN(args.image_size).to(device)
+def log_wandb(
+    ep: int,
+    train_loss: float,
+    args: ArgsModel,
+) -> None:
+    wandb.log(
+        {
+            "epoch": ep + 1,
+            "train_loss": train_loss,
+            f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
+        }
+    )
 
-    x, c = x.to(device), c.to(device)
-    outputs = model(x)
-    _, predicted = torch.max(outputs.data, 1)
-    total = c.size(0)
-    correct = (predicted == c).sum().item()
-    accuracy = 100 * correct / total
-    return accuracy
+
+def save_generated_samples(
+    model: DDPM,
+    args: ArgsModel,
+    device: str,
+    ep: int,
+) -> None:
+    model.eval()
+    with torch.no_grad():
+        n_sample = 4 * args.n_classes
+        x_gen = model.sample(n_sample, (1, args.image_size, args.image_size), device)
+
+        save_images(x_gen, args.save_dir + f"image_ep{ep}.png")
 
 
 def main(args: ArgsModel):
     init_wandb(args)
 
-    if not os.path.exists(args.save_dir):
-        os.makedirs(args.save_dir)
-
     device = setup_device()
 
-    train_dataloader, _ = create_mnist_dataloaders(
+    train_dataloader, test_dataloader = create_mnist_dataloaders(
         batch_size=args.batch_size, image_size=args.image_size
     )
 
-    model = DDPM(
-        nn_model=ContextUnet(
-            in_channels=1, n_feat=args.n_feat, n_classes=args.n_classes
-        ),
-        betas=args.betas,
-        n_T=args.timesteps,
+    # initializer = RandomColorInitializer()
+
+    model = NoiseDDPM(
+        unet=ContextUnet(in_channels=1, n_feat=args.n_feat, n_classes=args.n_classes),
+        # sample_initializer=initializer,
+        T=args.timesteps,
         device=device,
-        drop_prob=args.drop_prob,
+        betas=args.betas,
     )
     model.to(device)
 

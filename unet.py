@@ -124,9 +124,8 @@ class ContextUnet(nn.Module):
             nn.Conv2d(n_feat, self.in_channels, 3, 1, 1),
         )
 
-    def forward(self, x, c, t, context_mask):
+    def forward(self, x, c, t):
         # x is (noisy) image, c is context label, t is timestep,
-        # context_mask says which samples to block the context on
 
         x = self.init_conv(x)
         down1 = self.down1(x)
@@ -135,12 +134,6 @@ class ContextUnet(nn.Module):
 
         # convert context to one hot embedding
         c = nn.functional.one_hot(c, num_classes=self.n_classes).type(torch.float)
-
-        # mask out context if context_mask == 1
-        context_mask = context_mask[:, None]
-        context_mask = context_mask.repeat(1, self.n_classes)
-        context_mask = -1 * (1 - context_mask)  # need to flip 0 <-> 1
-        c = c * context_mask
 
         # embed context, time step
         cemb1 = self.contextembed1(c).view(-1, self.n_feat * 2, 1, 1)
