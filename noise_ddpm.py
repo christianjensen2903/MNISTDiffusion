@@ -65,20 +65,22 @@ class NoiseDDPM(DDPM):
         # return MSE between added noise, and our predicted noise
         return self.loss_mse(noise, self.nn_model(x_t, c, _ts / self.T))
 
-    def sample(self, n_sample, size, device):
+    def sample(self, n_sample, size):
         x_i = torch.randn(n_sample, *size).to(
-            device
+            self.device
         )  # x_T ~ N(0, 1), sample initial noise
 
         # Assuming context is required, initialize it here.
-        c_i = torch.arange(0, 10).to(device)  # context cycles through the MNIST labels
+        c_i = torch.arange(0, 10).to(
+            self.device
+        )  # context cycles through the MNIST labels
         c_i = c_i.repeat(int(n_sample / c_i.shape[0]))
 
         for i in range(self.T, 0, -1):
-            t_is = torch.tensor([i / self.T]).to(device)
+            t_is = torch.tensor([i / self.T]).to(self.device)
             t_is = t_is.repeat(n_sample, 1, 1, 1)
 
-            z = torch.randn(n_sample, *size).to(device) if i > 1 else 0
+            z = torch.randn(n_sample, *size).to(self.device) if i > 1 else 0
 
             eps = self.nn_model(x_i, c_i, t_is)
             x_i = (
