@@ -26,10 +26,15 @@ class Pixelate:
             size //= 2
         return count * (self.n_between + 1) - 1
 
-    def set_image_to_random_grey(self, images: torch.Tensor):
-        return images * 0 + torch.rand(1).to(images.device)
+    def set_to_random_grey(self, images: torch.Tensor, seed: int = None):
+        if seed is not None:
+            torch.manual_seed(seed)
 
-    def __call__(self, images: torch.Tensor, t: int):
+        # Generate a different random grey value for each image in the batch
+        random_greys = torch.rand(images.shape[0], 1, 1, 1).to(images.device)
+        return images * 0 + random_greys
+
+    def __call__(self, images: torch.Tensor, t: int, seed: int = None):
         """
         t = 0 -> no pixelation
         t = T -> full pixelations
@@ -47,7 +52,7 @@ class Pixelate:
         from_size = image_size // (2 ** (from_index + 1))
 
         if from_size <= 4:
-            from_images = self.set_image_to_random_grey(images)
+            from_images = self.set_to_random_grey(images, seed)
         else:
             from_transform = transforms.Compose(
                 [
@@ -148,12 +153,19 @@ class ColdDDPM(DDPM):
             self.device
         )
 
+        # Sample random seed
+        seed = torch.randint(0, 100000, (1,)).item()
+
         for t in range(self.T, 0, -1):
             t_is = torch.tensor([t / self.T]).to(self.device)
             t_is = t_is.repeat(n_sample)
 
             x_0 = self.nn_model(x_t, c_t, t_is)
 
-            x_t = x_t - self.degredation(x_0, t) + self.degredation(x_0, (t - 1))
+            x_t = (
+                x_t
+                - self.degredation(x_0, t, seed)
+                + self.degredation(x_0, (t - 1), seed)
+            )
 
         return x_0
