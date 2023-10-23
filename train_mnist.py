@@ -1,6 +1,6 @@
 import torch
 from noise_ddpm import NoiseDDPM
-from cold_ddpm import ColdDDPM
+from cold_ddpm import ColdDDPM, Pixelate
 from ddpm import DDPM
 from unet import ContextUnet
 from torch.utils.data import DataLoader
@@ -15,11 +15,13 @@ from enum import Enum
 class ModelType(str, Enum):
     cold = "cold"
     noise = "noise"
+    progessive = "progressive"
 
 
 class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 4
+    n_between: int = 3
     n_feat = 32
     epochs: int = 50
     lr: float = 4e-4
@@ -126,11 +128,12 @@ def main(args: ArgsModel):
             betas=args.betas,
         )
     elif args.model_type == ModelType.cold:
+        T = Pixelate(10).calculate_T(args.image_size)
         model = ColdDDPM(
             unet=ContextUnet(
                 in_channels=1, n_feat=args.n_feat, n_classes=args.n_classes
             ),
-            T=args.timesteps,
+            T=T,
             device=device,
         )
     model.to(device)

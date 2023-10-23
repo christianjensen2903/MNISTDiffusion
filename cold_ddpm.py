@@ -10,40 +10,21 @@ from ddpm import DDPM
 
 
 class Pixelate:
-    def __init__(self, image_size, n_between: int = 1):
-        """Sizes is a list of ints from smallest to largest"""
-        self.sizes = self._calculate_sizes(image_size)
-        self.transforms = [self.set_image_to_random_grey]
-        interpolation = transforms.InterpolationMode.NEAREST
-        for size in self.sizes:
-            self.transforms.append(
-                transforms.Compose(
-                    [
-                        transforms.Resize(size, interpolation),
-                        transforms.Resize(self.sizes[-1], interpolation),
-                    ]
-                )
-            )
+    def __init__(self, n_between: int = 1):
         self.n_between = n_between
-        self.T = self.calculate_T()
+        self.interpolation = transforms.InterpolationMode.NEAREST
 
-    def _calculate_sizes(self, image_size):
-        # Double the size until we reach the image size
-        result = []
-        n = 8
-        while n <= image_size:
-            result.append(n)
-            n *= 2
-        return result
-
-    def calculate_T(self):
+    def calculate_T(self, image_size):
         """
         img0 -> img1/N -> img2/N -> .. -> img(N-1)/N -> img1 -> img(N+1)/N ->... imgK
-        Where a fractional image denotes a interpolation between two images (imgA and img(A+1))
-        The number of images in the above becomes (excluding the original image):
-        K * (N+1)
+        Where a fractional image denotes an interpolation between two images (imgA and img(A+1))
         """
-        return len(self.sizes) * (self.n_between + 1)
+        size = image_size
+        count = 0
+        while size > 4:
+            count += 1
+            size //= 2
+        return count * (self.n_between + 1) - 1
 
     def set_image_to_random_grey(self, image: torch.Tensor):
         return image * 0 + torch.rand(1).to(image.device)
@@ -53,15 +34,43 @@ class Pixelate:
         t = 0 -> no pixelation
         t = T -> full pixelations
         """
-        fromIndex = (self.T - t) // (self.n_between + 1)
-        interpolation = ((self.T - t) % (self.n_between + 1)) / (self.n_between + 1)
-        fromImage = self.transforms[fromIndex](image)
-        if interpolation == 0:
-            return fromImage
+        if isinstance(t, torch.Tensor):
+            t = t.item()
+        image_size = image.shape[-1]
+
+        from_index = t // (self.n_between + 1)
+        interpolation = ((self.n_between - t) % (self.n_between + 1)) / (
+            self.n_between + 1
+        )
+
+        from_size = image_size // (2 ** (from_index + 1))
+
+        if from_size <= 4:
+            from_image = self.set_image_to_random_grey(image)
         else:
-            toIndex = fromIndex + 1
-            toImage = self.transforms[toIndex](image)
-            return (1 - interpolation) * fromImage + interpolation * toImage
+            from_transform = transforms.Compose(
+                [
+                    transforms.Resize(from_size, self.interpolation),
+                    transforms.Resize(image_size, self.interpolation),
+                ]
+            )
+            from_image = from_transform(image)
+
+        if interpolation == 0:
+            return from_image
+        else:
+            to_size = image_size // (2 ** (from_index))
+
+            to_transform = transforms.Compose(
+                [
+                    transforms.Resize(to_size, self.interpolation),
+                    transforms.Resize(image_size, self.interpolation),
+                ]
+            )
+
+            to_image = to_transform(image)
+
+            return (1 - interpolation) * from_image + interpolation * to_image
 
 
 class SampleInitializer(ABC):
@@ -107,8 +116,8 @@ class ColdDDPM(DDPM):
 
         self.device = device
         self.loss_mse = nn.MSELoss()
-        self.degredation = Pixelate(16, 10)
-        self.n_T = self.degredation.T
+        self.degredation = Pixelate(10)
+        self.T = T
         self.sample_initializer = RandomColorInitializer()
 
     def forward(self, x, c):
@@ -116,14 +125,14 @@ class ColdDDPM(DDPM):
         this method is used in training, so samples t and noise randomly
         """
 
-        _ts = torch.randint(1, self.n_T + 1, (x.shape[0],)).to(self.device)
+        _ts = torch.randint(1, self.T + 1, (x.shape[0],)).to(self.device)
 
         x_t = torch.cat(
             [self.degredation(x, t) for x, t in zip(x, _ts)], dim=0
         ).unsqueeze(1)
 
         # return MSE between added noise, and our predicted noise
-        pred = self.nn_model(x_t, c, _ts / self.n_T)
+        pred = self.nn_model(x_t, c, _ts / self.T)
         return self.loss_mse(x, pred)
 
     def sample(self, n_sample, size):
@@ -138,8 +147,8 @@ class ColdDDPM(DDPM):
             self.device
         )
 
-        for t in range(self.n_T, 0, -1):
-            t_is = torch.tensor([t / self.n_T]).to(self.device)
+        for t in range(self.T, 0, -1):
+            t_is = torch.tensor([t / self.T]).to(self.device)
             t_is = t_is.repeat(n_sample)
 
             x_0 = self.nn_model(x_t, c_t, t_is)
