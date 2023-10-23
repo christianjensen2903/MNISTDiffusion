@@ -26,17 +26,18 @@ class Pixelate:
             size //= 2
         return count * (self.n_between + 1) - 1
 
-    def set_image_to_random_grey(self, image: torch.Tensor):
-        return image * 0 + torch.rand(1).to(image.device)
+    def set_image_to_random_grey(self, images: torch.Tensor):
+        return images * 0 + torch.rand(1).to(images.device)
 
-    def __call__(self, image: torch.Tensor, t: int):
+    def __call__(self, images: torch.Tensor, t: int):
         """
         t = 0 -> no pixelation
         t = T -> full pixelations
         """
+
         if isinstance(t, torch.Tensor):
             t = t.item()
-        image_size = image.shape[-1]
+        image_size = images.shape[-1]
 
         from_index = t // (self.n_between + 1)
         interpolation = ((self.n_between - t) % (self.n_between + 1)) / (
@@ -46,7 +47,7 @@ class Pixelate:
         from_size = image_size // (2 ** (from_index + 1))
 
         if from_size <= 4:
-            from_image = self.set_image_to_random_grey(image)
+            from_images = self.set_image_to_random_grey(images)
         else:
             from_transform = transforms.Compose(
                 [
@@ -54,10 +55,10 @@ class Pixelate:
                     transforms.Resize(image_size, self.interpolation),
                 ]
             )
-            from_image = from_transform(image)
+            from_images = from_transform(images)
 
         if interpolation == 0:
-            return from_image
+            return from_images
         else:
             to_size = image_size // (2 ** (from_index))
 
@@ -68,9 +69,9 @@ class Pixelate:
                 ]
             )
 
-            to_image = to_transform(image)
+            to_images = to_transform(images)
 
-            return (1 - interpolation) * from_image + interpolation * to_image
+            return (1 - interpolation) * from_images + interpolation * to_images
 
 
 class SampleInitializer(ABC):
