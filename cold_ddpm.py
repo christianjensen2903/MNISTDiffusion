@@ -31,7 +31,10 @@ class Pixelate:
             torch.manual_seed(seed)
 
         # Generate a different random grey value for each image in the batch
-        random_greys = torch.rand(images.shape[0], 1, 1, 1).to(images.device)
+        if len(images.shape) == 4:
+            random_greys = torch.rand(images.shape[0], 1, 1, 1).to(images.device)
+        else:
+            random_greys = torch.rand(images.shape[0], 1, 1).to(images.device)
         return images * 0 + random_greys
 
     def __call__(self, images: torch.Tensor, t: int, seed: int = None):

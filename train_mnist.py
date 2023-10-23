@@ -30,7 +30,7 @@ class ArgsModel(BaseModel):
     log_freq: int = 200
     image_size: int = 16
     n_classes: int = 10
-    model_type: ModelType = ModelType.scaling
+    model_type: ModelType = ModelType.cold
     log_wandb: bool = False
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
