@@ -1,12 +1,12 @@
 import torch
 import torch.nn as nn
 from unet import ContextUnet
-import torch.nn.functional as F
-from utils import upscale_images
-from gmm import sample_from_gmm_for_class
 from abc import ABC, abstractmethod
 from torchvision import transforms
 from ddpm import DDPM
+import numpy as np
+import torch.nn.functional as F
+from utils import upscale_images
 
 
 class Pixelate:
@@ -31,7 +31,10 @@ class Pixelate:
             torch.manual_seed(seed)
 
         # Generate a different random grey value for each image in the batch
-        random_greys = torch.rand(images.shape[0], 1, 1, 1).to(images.device)
+        if len(images.shape) == 4:
+            random_greys = torch.rand(images.shape[0], 1, 1, 1).to(images.device)
+        else:
+            random_greys = torch.rand(images.shape[0], 1, 1).to(images.device)
         return images * 0 + random_greys
 
     def __call__(self, images: torch.Tensor, t: int, seed: int = None):
@@ -79,24 +82,34 @@ class Pixelate:
             return (1 - interpolation) * from_images + interpolation * to_images
 
 
+def random_downscale(tensor_img):
+    # Ensure the image is square
+    assert tensor_img.shape[-1] == tensor_img.shape[-2], "The image must be square!"
+
+    # Get the original size (width or height)
+    original_size = tensor_img.shape[-1]
+
+    # Compute the maximum power of 2 for the image size
+    max_power = int(np.log2(original_size))
+
+    # Generate a list of possible sizes
+    possible_sizes = [2**i for i in range(2, max_power + 1)][::-1]
+
+    # Randomly select a size
+    selected_size = np.random.choice(possible_sizes)
+
+    # Downscale the image
+    downscaled_tensor = F.interpolate(tensor_img, size=selected_size, mode="nearest")
+
+    return downscaled_tensor
+
+
 class SampleInitializer(ABC):
     @abstractmethod
     def sample(
         self, n_sample: int, size: tuple[int, int], label: int | str
     ) -> torch.Tensor:
         pass
-
-
-class GMMInitializer(SampleInitializer):
-    def __init__(self, gmms):
-        self.gmms = gmms
-
-    def sample(self, n_sample, size, label):
-        samples = sample_from_gmm_for_class(self.gmms, label, n_samples=n_sample)
-        sample_img_size = int(samples.shape[-1] ** 0.5)
-        samples = samples.reshape(n_sample, 1, sample_img_size, sample_img_size)
-        samples = torch.tensor(samples, dtype=torch.float32)
-        return upscale_images(samples, size[-1])
 
 
 class RandomColorInitializer(SampleInitializer):
@@ -106,7 +119,7 @@ class RandomColorInitializer(SampleInitializer):
         return torch.ones(n_sample, 1, size[-1], size[-1]) * color
 
 
-class ColdDDPM(DDPM):
+class ScalingDDPM(DDPM):
     def __init__(
         self,
         unet: ContextUnet,
@@ -114,7 +127,7 @@ class ColdDDPM(DDPM):
         device,
         n_between: int = 1,
     ):
-        super(ColdDDPM, self).__init__(
+        super(ScalingDDPM, self).__init__(
             unet=unet,
             T=T,
             device=device,
@@ -126,20 +139,23 @@ class ColdDDPM(DDPM):
         self.degredation = Pixelate(n_between=n_between)
         self.T = T
         self.sample_initializer = RandomColorInitializer()
+        self.n_between = n_between
 
     def forward(self, x, c):
         """
         this method is used in training, so samples t and noise randomly
         """
+        # Calculate downscaling factor
+        x = random_downscale(x)
 
-        _ts = torch.randint(1, self.T + 1, (x.shape[0],)).to(self.device)
+        _ts = torch.randint(0, self.n_between, (x.shape[0],)).to(self.device)
 
         x_t = torch.cat(
             [self.degredation(x, t) for x, t in zip(x, _ts)], dim=0
         ).unsqueeze(1)
 
         # return MSE between added noise, and our predicted noise
-        pred = self.nn_model(x_t, c, _ts / self.T)
+        pred = self.nn_model(x_t, c, _ts / self.n_between)
         return self.loss_mse(x, pred)
 
     def sample(self, n_sample, size):
@@ -150,23 +166,30 @@ class ColdDDPM(DDPM):
         c_t = c_t.repeat(int(n_sample / c_t.shape[0]))
 
         # Sample x_t for classes
-        x_t = torch.cat([self.sample_initializer.sample(1, size, c) for c in c_t]).to(
+        x_t = torch.cat([self.sample_initializer.sample(1, (4, 4), c) for c in c_t]).to(
             self.device
         )
 
         # Sample random seed
         seed = torch.randint(0, 100000, (1,)).item()
 
-        for t in range(self.T, 0, -1):
-            t_is = torch.tensor([t / self.T]).to(self.device)
-            t_is = t_is.repeat(n_sample)
+        current_size = 4
+        while current_size <= size[-1]:
+            for t in range(self.n_between, 0, -1):
+                t_is = torch.tensor([t / self.T]).to(self.device)
+                t_is = t_is.repeat(n_sample)
 
-            x_0 = self.nn_model(x_t, c_t, t_is)
+                x_0 = self.nn_model(x_t, c_t, t_is)
 
-            x_t = (
-                x_t
-                - self.degredation(x_0, t, seed)
-                + self.degredation(x_0, (t - 1), seed)
-            )
+                x_t = (
+                    x_t
+                    - self.degredation(x_0, t, seed)
+                    + self.degredation(x_0, (t - 1), seed)
+                )
+
+            current_size *= 2
+
+            if current_size <= size[-1]:
+                x_t = upscale_images(x_t, current_size)
 
         return x_0
