@@ -30,7 +30,7 @@ class ArgsModel(BaseModel):
     log_freq: int = 200
     image_size: int = 16
     n_classes: int = 10
-    model_type: ModelType = ModelType.cold
+    model_type: ModelType = ModelType.scaling
     log_wandb: bool = False
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
@@ -62,12 +62,19 @@ def train_model(
         pbar = tqdm(train_dataloader)
         total_loss = 0
 
+        i = 0
+
         for x, c in pbar:
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
 
-            loss = model(x, c)
+            loss, pred, x_t, x = model(x, c)
             loss.backward()
+
+            if i == 0:
+                save_images(x_t, "debug/x_t.png")
+                save_images(x, "debug/x.png")
+                save_images(pred, "debug/pred.png")
 
             total_loss += loss.item()
 

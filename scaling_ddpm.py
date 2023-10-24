@@ -6,7 +6,7 @@ from torchvision import transforms
 from ddpm import DDPM
 import numpy as np
 import torch.nn.functional as F
-from utils import upscale_images
+from utils import upscale_images, save_images
 
 
 class Pixelate:
@@ -21,7 +21,7 @@ class Pixelate:
         """
         size = image_size
         count = 0
-        while size > 4:
+        while size >= 4:
             count += 1
             size //= 2
         return count * (self.n_between + 1) - 1
@@ -54,7 +54,7 @@ class Pixelate:
 
         from_size = image_size // (2 ** (from_index + 1))
 
-        if from_size <= 4:
+        if from_size < 4:
             from_images = self.set_to_random_grey(images, seed)
         else:
             from_transform = transforms.Compose(
@@ -156,7 +156,7 @@ class ScalingDDPM(DDPM):
 
         # return MSE between added noise, and our predicted noise
         pred = self.nn_model(x_t, c, _ts / self.n_between)
-        return self.loss_mse(x, pred)
+        return self.loss_mse(x, pred), pred, x_t, x
 
     def sample(self, n_sample, size):
         # Assuming context is required, initialize it here.
@@ -170,6 +170,8 @@ class ScalingDDPM(DDPM):
             self.device
         )
 
+        save_images(x_t, "debug/sample/start.png")
+
         # Sample random seed
         seed = torch.randint(0, 100000, (1,)).item()
 
@@ -181,15 +183,16 @@ class ScalingDDPM(DDPM):
 
                 x_0 = self.nn_model(x_t, c_t, t_is)
 
-                x_t = (
-                    x_t
-                    - self.degredation(x_0, t, seed)
-                    + self.degredation(x_0, (t - 1), seed)
-                )
+                save_images(x_t, f"debug/sample/x_0_{current_size}_{t}.png")
+
+                x_t = self.degredation(x_0, (t - 1), seed)
+
+                save_images(x_t, f"debug/sample/x_t_{current_size}_{t}.png")
 
             current_size *= 2
 
             if current_size <= size[-1]:
                 x_t = upscale_images(x_t, current_size)
+                save_images(x_t, f"debug/sample/x_t_upscale_{current_size}.png")
 
         return x_0
