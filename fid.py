@@ -137,6 +137,8 @@ def _save_real_samples(path: str, image_size: int, batch_size: int) -> None:
     """
     Save new samples from the dataset.
     """
+    _ensure_directory_exists(path)  # Ensure the directory exists before saving images
+
     _, dataloader = create_mnist_dataloaders(batch_size, image_size)
     for i, (images, _) in enumerate(dataloader):
         for j, image in enumerate(images):
