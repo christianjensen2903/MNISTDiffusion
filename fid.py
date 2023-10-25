@@ -33,19 +33,18 @@ def calculate_fid(
     assert count >= DIMS, "count must be at least 2048"
 
     path = "fid/"
-    # _save_real_samples(path + "real/", count, image_size)
-    mu_real, sigma_real = _get_real_statistics(
-        path + "real/", image_size, batch_size, device
-    )
+
+    mu_real, sigma_real = _get_real_statistics(path, image_size, batch_size, device)
 
     mu_fake, sigma_fake = _get_fake_statistics(
-        path + "fake/", count, image_size, batch_size, device, model
+        path, count, image_size, batch_size, device, model
     )
     fid = calculate_frechet_distance(mu_real, sigma_real, mu_fake, sigma_fake)
     return fid
 
 
 def _save_samples(path: str, samples: torch.Tensor) -> None:
+    path += "fake/"
     _ensure_directory_exists(path)
     _remove_saved_files(path)
 
@@ -61,10 +60,10 @@ def _get_fake_statistics(
     Get the fake statistics of the model.
     """
     generated_samples = model.sample(count, (1, image_size, image_size))
-    _save_samples(path, generated_samples)
+    _save_samples(path + "fake", generated_samples)
     inception_model = _get_inception_model(device, DIMS)
     mu, sigma = compute_statistics_of_path(
-        path, inception_model, batch_size, DIMS, device
+        path + "fake", inception_model, batch_size, DIMS, device
     )
     return mu, sigma
 
@@ -75,23 +74,27 @@ def _get_real_statistics(
     """
     Get the real statistics of the dataset.
     """
-    if not os.path.exists(path):
-        os.makedirs(path, exist_ok=True)
-        _save_real_samples(path, image_size, batch_size)
 
-    if os.path.exists(path + "real_stats.json"):
-        with open(path + "real_stats.json", "r") as f:
+    json_path = f"{path}real_stats_{image_size}.json"
+
+    if os.path.exists(json_path):
+        with open(json_path, "r") as f:
             stats = json.load(f)
 
         return stats["mu"], stats["sigma"]
+
     else:
+        # Delete old files if they exist
+        _remove_saved_files(path + "real/")
+        _save_real_samples(path + "real/", image_size, batch_size)
+
         # Calculate statistics
         inception_model = _get_inception_model(device, DIMS)
         mu, sigma = compute_statistics_of_path(
-            path, inception_model, batch_size, DIMS, device
+            path + "real/", inception_model, batch_size, DIMS, device
         )
-        with open(path + "real_stats.json", "w") as f:
-            json.dump({"mu": mu, "sigma": sigma.tolist()}, f)
+        with open(json_path, "w") as f:
+            json.dump({"mu": mu.tolist(), "sigma": sigma.tolist()}, f)
 
         return mu, sigma
 
@@ -159,6 +162,7 @@ if __name__ == "__main__":
     fid = calculate_fid(
         model=model,
         device=device,
+        image_size=16,
     )
 
     print(f"FID: {fid}")

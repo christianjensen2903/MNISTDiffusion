@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from tqdm import tqdm
 from utils import save_images, save_model, setup_device
 from enum import Enum
+from fid import calculate_fid
 
 
 class ModelType(str, Enum):
@@ -79,6 +80,13 @@ def train_model(
 
         save_generated_samples(model, args, ep)
         avg_loss = total_loss / len(train_dataloader)
+        fid = calculate_fid(
+            model,
+            device=device,
+            batch_size=args.batch_size,
+            count=2048,
+            image_size=args.image_size,
+        )
         if args.log_wandb:
             log_wandb(ep, avg_loss, args)
 
