@@ -44,7 +44,7 @@ class ColdDDPM(DDPM):
 
         # return MSE between added noise, and our predicted noise
         pred = self.nn_model(x_t, c, _ts / self.T)
-        return self.loss_mse(x, pred)
+        return self.loss_mse(x, pred), pred, x_t, x
 
     def sample(self, n_sample, size):
         # Assuming context is required, initialize it here.
