@@ -87,8 +87,9 @@ def train_model(
             count=2048,
             image_size=args.image_size,
         )
+        print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f}")
         if args.log_wandb:
-            log_wandb(ep, avg_loss, args)
+            log_wandb(ep, avg_loss, fid, args)
 
         if args.save_model and ep == int(args.epochs - 1):
             save_model(model, args.save_dir + "model.pth")
@@ -97,12 +98,14 @@ def train_model(
 def log_wandb(
     ep: int,
     train_loss: float,
+    fid: float,
     args: ArgsModel,
 ) -> None:
     wandb.log(
         {
             "epoch": ep + 1,
             "train_loss": train_loss,
+            "fid": fid,
             f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
         }
     )
