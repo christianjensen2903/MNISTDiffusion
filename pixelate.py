@@ -4,10 +4,16 @@ from initializers import SampleInitializer
 
 
 class Pixelate:
-    def __init__(self, sample_initializer: SampleInitializer, n_between: int = 1):
+    def __init__(
+        self,
+        sample_initializer: SampleInitializer,
+        n_between: int = 1,
+        minimum_pixelation: int = 8,
+    ):
         self.n_between = n_between
         self.interpolation = transforms.InterpolationMode.NEAREST
         self.sample_initializer = sample_initializer
+        self.minimum_pixelation = minimum_pixelation
 
     def calculate_T(self, image_size):
         """
@@ -16,7 +22,7 @@ class Pixelate:
         """
         size = image_size
         count = 0
-        while size > 4:
+        while size > self.minimum_pixelation / 2:
             count += 1
             size //= 2
         return count * self.n_between
@@ -46,7 +52,7 @@ class Pixelate:
 
         from_size = image_size // (2 ** (from_index + 1))
 
-        if from_size <= 4:
+        if from_size <= self.minimum_pixelation / 2:
             # Using SampleInitializer here
             from_images = self.sample_initializer.sample(images.shape, None)
         else:

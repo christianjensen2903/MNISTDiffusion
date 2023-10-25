@@ -25,6 +25,7 @@ class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 4
     n_between: int = 10
+    minimum_pixelation: int = 8
     n_feat = 32
     epochs: int = 50
     lr: float = 4e-4
@@ -32,7 +33,7 @@ class ArgsModel(BaseModel):
     log_freq: int = 200
     image_size: int = 16
     n_classes: int = 10
-    model_type: ModelType = ModelType.scaling
+    model_type: ModelType = ModelType.cold
     log_wandb: bool = False
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
@@ -142,6 +143,7 @@ def main(args: ArgsModel):
             device=device,
             n_between=args.n_between,
             initializer=initializer,
+            minimum_pixelation=args.minimum_pixelation,
         )
     elif args.model_type == ModelType.scaling:
         model = ScalingDDPM(
@@ -152,6 +154,7 @@ def main(args: ArgsModel):
             device=device,
             n_between=args.n_between,
             initializer=initializer,
+            minimum_pixelation=args.minimum_pixelation,
         )
     model.to(device)
 

@@ -35,6 +35,7 @@ class ScalingDDPM(DDPM):
         device,
         n_between: int,
         initializer: SampleInitializer,
+        minimum_pixelation: int,
     ):
         super(ScalingDDPM, self).__init__(
             unet=unet,
@@ -46,10 +47,14 @@ class ScalingDDPM(DDPM):
         self.device = device
         self.loss_mse = nn.MSELoss()
         self.sample_initializer = initializer
-        self.degredation = Pixelate(self.sample_initializer, n_between=n_between)
+        self.degredation = Pixelate(
+            self.sample_initializer,
+            n_between=n_between,
+            minimum_pixelation=minimum_pixelation,
+        )
         self.T = T
         self.n_between = n_between
-        self.min_size = 8
+        self.min_size = minimum_pixelation
 
     def forward(self, x, c):
         """
@@ -85,7 +90,10 @@ class ScalingDDPM(DDPM):
 
         # Sample x_t for classes
         x_t = torch.cat(
-            [self.sample_initializer.sample((1, 1, 8, 8), c) for c in c_t]
+            [
+                self.sample_initializer.sample((1, 1, self.min_size, self.min_size), c)
+                for c in c_t
+            ]
         ).to(self.device)
 
         # Sample random seed
