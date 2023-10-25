@@ -44,7 +44,6 @@ def calculate_fid(
 
 
 def _save_samples(path: str, samples: torch.Tensor) -> None:
-    path += "fake/"
     _ensure_directory_exists(path)
     _remove_saved_files(path)
 
@@ -85,7 +84,8 @@ def _get_real_statistics(
 
     else:
         # Delete old files if they exist
-        _remove_saved_files(path + "real/")
+        if os.path.exists(path + "real/"):
+            _remove_saved_files(path + "real/")
         _save_real_samples(path + "real/", image_size, batch_size)
 
         # Calculate statistics
