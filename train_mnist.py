@@ -1,7 +1,9 @@
 import torch
 from noise_ddpm import NoiseDDPM
 from cold_ddpm import ColdDDPM
-from scaling_ddpm import ScalingDDPM, Pixelate
+from scaling_ddpm import ScalingDDPM
+from pixelate import Pixelate
+from initializers import RandomColorInitializer
 from ddpm import DDPM
 from unet import ContextUnet
 from torch.utils.data import DataLoader
@@ -119,6 +121,9 @@ def main(args: ArgsModel):
         batch_size=args.batch_size, image_size=args.image_size
     )
 
+    pixelate_T = Pixelate(args.n_between).calculate_T(args.image_size)
+    initializer = RandomColorInitializer()
+
     if args.model_type == ModelType.noise:
         model = NoiseDDPM(
             unet=ContextUnet(
@@ -129,24 +134,24 @@ def main(args: ArgsModel):
             betas=args.betas,
         )
     elif args.model_type == ModelType.cold:
-        T = Pixelate(args.n_between).calculate_T(args.image_size)
         model = ColdDDPM(
             unet=ContextUnet(
                 in_channels=1, n_feat=args.n_feat, n_classes=args.n_classes
             ),
-            T=T,
+            T=pixelate_T,
             device=device,
             n_between=args.n_between,
+            initializer=initializer,
         )
     elif args.model_type == ModelType.scaling:
-        T = Pixelate(args.n_between).calculate_T(args.image_size)
         model = ScalingDDPM(
             unet=ContextUnet(
                 in_channels=1, n_feat=args.n_feat, n_classes=args.n_classes
             ),
-            T=T,
+            T=pixelate_T,
             device=device,
             n_between=args.n_between,
+            initializer=initializer,
         )
     model.to(device)
 

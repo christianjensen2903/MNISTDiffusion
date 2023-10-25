@@ -1,93 +1,13 @@
 import torch
 import torch.nn as nn
 from unet import ContextUnet
-from abc import ABC, abstractmethod
-from torchvision import transforms
 from ddpm import DDPM
 import numpy as np
 import torch.nn.functional as F
-from utils import upscale_images, save_images
+from utils import upscale_images
 import math
-
-
-class Pixelate:
-    def __init__(self, n_between: int = 1):
-        self.n_between = n_between
-        self.interpolation = transforms.InterpolationMode.NEAREST
-
-    def calculate_T(self, image_size):
-        """
-        img0 -> img1/N -> img2/N -> .. -> img(N-1)/N -> img1 -> img(N+1)/N ->... imgK
-        Where a fractional image denotes an interpolation between two images (imgA and img(A+1))
-        """
-        size = image_size
-        count = 0
-        while size > 4:
-            count += 1
-            size //= 2
-        return count * self.n_between
-
-    def set_to_random_grey(self, images: torch.Tensor, seed: int = None):
-        if seed is not None:
-            torch.manual_seed(seed)
-
-        # Generate a different random grey value for each image in the batch
-        # Only samples greys between 0.5 and 1.0
-        if len(images.shape) == 4:
-            random_greys = 0.5 + 0.5 * torch.rand(images.shape[0], 1, 1, 1).to(
-                images.device
-            )
-        else:
-            random_greys = 0.5 + 0.5 * torch.rand(images.shape[0], 1, 1).to(
-                images.device
-            )
-        return images * 0 + random_greys
-
-    def __call__(self, images: torch.Tensor, t: int, seed: int = None):
-        """
-        t = 1 -> no pixelation
-        t = T -> full pixelations
-        """
-
-        if isinstance(t, torch.Tensor):
-            t = t.item()
-        image_size = images.shape[-1]
-
-        from_index = t // (self.n_between + 1)
-        current_level = (t - 1) // self.n_between  # Find out which segment t is in
-        relative_t = (
-            t - current_level * self.n_between
-        )  # Position of t within that segment
-
-        interpolation = -1 / (self.n_between - 1) * relative_t + self.n_between / (
-            self.n_between - 1
-        )
-
-        from_size = image_size // (2 ** (from_index + 1))
-
-        if from_size <= 4:
-            from_images = self.set_to_random_grey(images, seed)
-        else:
-            from_transform = transforms.Compose(
-                [
-                    transforms.Resize(from_size, self.interpolation),
-                    transforms.Resize(image_size, self.interpolation),
-                ]
-            )
-            from_images = from_transform(images)
-
-        to_size = image_size // (2 ** (from_index))
-
-        to_transform = transforms.Compose(
-            [
-                transforms.Resize(to_size, self.interpolation),
-                transforms.Resize(image_size, self.interpolation),
-            ]
-        )
-
-        to_images = to_transform(images)
-
-        return (1 - interpolation) * from_images + interpolation * to_images
+from initializers import SampleInitializer
+from pixelate import Pixelate
 
 
 def sample_level(max_size, min_size):
@@ -107,28 +27,14 @@ def downscale_images(images: torch.Tensor, to_size: int) -> torch.Tensor:
     return F.interpolate(images, size=(to_size, to_size), mode="nearest")
 
 
-class SampleInitializer(ABC):
-    @abstractmethod
-    def sample(
-        self, n_sample: int, size: tuple[int, int], label: int | str
-    ) -> torch.Tensor:
-        pass
-
-
-class RandomColorInitializer(SampleInitializer):
-    def sample(self, n_sample, size, label):
-        # Sample a random grey image between 0.5 and 1
-        color = 0.5 + 0.5 * torch.rand(1)
-        return torch.ones(n_sample, 1, size[-1], size[-1]) * color
-
-
 class ScalingDDPM(DDPM):
     def __init__(
         self,
         unet: ContextUnet,
         T,
         device,
-        n_between: int = 1,
+        n_between: int,
+        initializer: SampleInitializer,
     ):
         super(ScalingDDPM, self).__init__(
             unet=unet,
@@ -139,9 +45,9 @@ class ScalingDDPM(DDPM):
 
         self.device = device
         self.loss_mse = nn.MSELoss()
-        self.degredation = Pixelate(n_between=n_between)
+        self.sample_initializer = initializer
+        self.degredation = Pixelate(self.sample_initializer, n_between=n_between)
         self.T = T
-        self.sample_initializer = RandomColorInitializer()
         self.n_between = n_between
         self.min_size = 8
 
@@ -178,9 +84,9 @@ class ScalingDDPM(DDPM):
         c_t = c_t.repeat(int(n_sample / c_t.shape[0]))
 
         # Sample x_t for classes
-        x_t = torch.cat([self.sample_initializer.sample(1, (8, 8), c) for c in c_t]).to(
-            self.device
-        )
+        x_t = torch.cat(
+            [self.sample_initializer.sample((1, 1, 8, 8), c) for c in c_t]
+        ).to(self.device)
 
         # Sample random seed
         seed = torch.randint(0, 100000, (1,)).item()
