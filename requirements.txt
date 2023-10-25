@@ -3,3 +3,5 @@ torchvision
 tqdm
 argparse
 wandb==0.15.10
+pytorch-fid==0.3.0
+pydantic

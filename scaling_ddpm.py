@@ -16,6 +16,7 @@ class ScalingDDPM(DDPM):
         unet: ContextUnet,
         T,
         device,
+        n_classes,
         n_between: int,
         initializer: SampleInitializer,
         minimum_pixelation: int,
@@ -24,6 +25,7 @@ class ScalingDDPM(DDPM):
             unet=unet,
             T=T,
             device=device,
+            n_classes=n_classes,
         )
         self.nn_model = unet.to(device)
 
@@ -66,17 +68,13 @@ class ScalingDDPM(DDPM):
         return self.loss_mse(x, pred)
 
     def sample(self, n_sample, size):
-        # Assuming context is required, initialize it here.
-        c_t = torch.arange(0, 10).to(
-            self.device
-        )  # context cycles through the MNIST labels
-        c_t = c_t.repeat(int(n_sample / c_t.shape[0]))
+        c_i = self.get_ci(n_sample)
 
         # Sample x_t for classes
         x_t = torch.cat(
             [
                 self.sample_initializer.sample((1, 1, self.min_size, self.min_size), c)
-                for c in c_t
+                for c in c_i
             ]
         ).to(self.device)
 
@@ -91,7 +89,7 @@ class ScalingDDPM(DDPM):
                 t_is = torch.tensor([t]).to(self.device)
                 t_is = t_is.repeat(n_sample)
 
-                x_0 = self.nn_model(x_t, c_t, t_is / self.T)
+                x_0 = self.nn_model(x_t, c_i, t_is / self.T)
 
                 if relative_t - 1 > 0:
                     x_t = (

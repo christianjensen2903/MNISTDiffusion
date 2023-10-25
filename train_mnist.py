@@ -134,6 +134,7 @@ def main(args: ArgsModel):
             ),
             T=args.timesteps,
             device=device,
+            n_classes=args.n_classes,
             betas=args.betas,
         )
     elif args.model_type == ModelType.cold:
@@ -143,6 +144,7 @@ def main(args: ArgsModel):
             ),
             T=pixelate_T,
             device=device,
+            n_classes=args.n_classes,
             n_between=args.n_between,
             initializer=initializer,
             minimum_pixelation=args.minimum_pixelation,
@@ -154,6 +156,7 @@ def main(args: ArgsModel):
             ),
             T=pixelate_T,
             device=device,
+            n_classes=args.n_classes,
             n_between=args.n_between,
             initializer=initializer,
             minimum_pixelation=args.minimum_pixelation,

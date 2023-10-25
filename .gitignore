@@ -5,3 +5,4 @@ assets
 *.pyc
 wandb
 debug
+fid

@@ -48,9 +48,12 @@ class Pixelate:
             t - current_level * self.n_between
         )  # Position of t within that segment
 
-        interpolation = -1 / (self.n_between - 1) * relative_t + self.n_between / (
-            self.n_between - 1
-        )
+        if self.n_between == 1:
+            interpolation = 1
+        else:
+            interpolation = -1 / (self.n_between - 1) * relative_t + self.n_between / (
+                self.n_between - 1
+            )
 
         from_size = image_size // (2 ** (from_index + 1))
 

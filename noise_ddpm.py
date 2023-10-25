@@ -33,8 +33,10 @@ def ddpm_schedules(beta1, beta2, T):
 
 
 class NoiseDDPM(DDPM):
-    def __init__(self, unet, T, device, betas):
-        super(NoiseDDPM, self).__init__(unet=unet, T=T, device=device)
+    def __init__(self, unet, T, device, n_classes, betas):
+        super(NoiseDDPM, self).__init__(
+            unet=unet, T=T, device=device, n_classes=n_classes
+        )
         self.nn_model = unet.to(device)
 
         # register_buffer allows accessing dictionary produced by ddpm_schedules
@@ -70,11 +72,7 @@ class NoiseDDPM(DDPM):
             self.device
         )  # x_T ~ N(0, 1), sample initial noise
 
-        # Assuming context is required, initialize it here.
-        c_i = torch.arange(0, 10).to(
-            self.device
-        )  # context cycles through the MNIST labels
-        c_i = c_i.repeat(int(n_sample / c_i.shape[0]))
+        c_i = self.get_ci(n_sample)
 
         for i in range(self.T, 0, -1):
             t_is = torch.tensor([i / self.T]).to(self.device)
