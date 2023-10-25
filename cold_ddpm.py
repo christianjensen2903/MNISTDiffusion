@@ -27,7 +27,10 @@ class ColdDDPM(DDPM):
         self.loss_mse = nn.MSELoss()
         self.sample_initializer = initializer
         self.degredation = Pixelate(
-            initializer, n_between=n_between, minimum_pixelation=minimum_pixelation
+            initializer,
+            device,
+            n_between=n_between,
+            minimum_pixelation=minimum_pixelation,
         )
         self.T = T
 
@@ -44,7 +47,7 @@ class ColdDDPM(DDPM):
 
         # return MSE between added noise, and our predicted noise
         pred = self.nn_model(x_t, c, _ts / self.T)
-        return self.loss_mse(x, pred), pred, x_t, x
+        return self.loss_mse(x, pred)
 
     def sample(self, n_sample, size):
         # Assuming context is required, initialize it here.

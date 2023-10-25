@@ -7,6 +7,7 @@ class Pixelate:
     def __init__(
         self,
         sample_initializer: SampleInitializer,
+        device=str,
         n_between: int = 1,
         minimum_pixelation: int = 8,
     ):
@@ -14,6 +15,7 @@ class Pixelate:
         self.interpolation = transforms.InterpolationMode.NEAREST
         self.sample_initializer = sample_initializer
         self.minimum_pixelation = minimum_pixelation
+        self.device = device
 
     def calculate_T(self, image_size):
         """
@@ -54,7 +56,9 @@ class Pixelate:
 
         if from_size <= self.minimum_pixelation / 2:
             # Using SampleInitializer here
-            from_images = self.sample_initializer.sample(images.shape, None)
+            from_images = self.sample_initializer.sample(images.shape, None).to(
+                self.device
+            )
         else:
             from_transform = transforms.Compose(
                 [

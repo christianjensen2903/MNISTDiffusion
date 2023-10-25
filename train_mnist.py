@@ -64,19 +64,13 @@ def train_model(
 
         pbar = tqdm(train_dataloader)
         total_loss = 0
-        i = 0
+
         for x, c in pbar:
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
 
-            loss, pred, x_t, x = model(x, c)
+            loss = model(x, c)
             loss.backward()
-
-            if i == 0:
-                save_images(pred, "debug/pred.png")
-                save_images(x_t, "debug/x_t.png")
-                save_images(x, "debug/x.png")
-                i += 1
 
             total_loss += loss.item()
 
@@ -130,7 +124,7 @@ def main(args: ArgsModel):
 
     initializer = RandomColorInitializer()
     pixelate_T = Pixelate(
-        initializer, args.n_between, args.minimum_pixelation
+        initializer, device, args.n_between, args.minimum_pixelation
     ).calculate_T(args.image_size)
 
     if args.model_type == ModelType.noise:
