@@ -1,7 +1,7 @@
 import torch
 from abc import ABC, abstractmethod
 from gmm import sample_from_gmm_for_class
-from utils import upscale_images
+from utils import scale_images
 
 
 class SampleInitializer(ABC):
@@ -26,4 +26,4 @@ class GMMInitializer(SampleInitializer):
         sample_img_size = int(samples.shape[-1] ** 0.5)
         samples = samples.reshape(n_sample, 1, sample_img_size, sample_img_size)
         samples = torch.tensor(samples, dtype=torch.float32)
-        return upscale_images(samples, size[-1])
+        return scale_images(samples, size[-1])

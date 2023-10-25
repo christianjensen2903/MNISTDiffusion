@@ -4,27 +4,10 @@ from unet import ContextUnet
 from ddpm import DDPM
 import numpy as np
 import torch.nn.functional as F
-from utils import upscale_images
+from utils import scale_images
 import math
 from initializers import SampleInitializer
 from pixelate import Pixelate
-
-
-def sample_level(max_size, min_size):
-    number_of_levels = int(math.log2(max_size) - math.log2(min_size)) + 1
-
-    # Create a probability distribution with higher probability for the last level.
-    # This is just one way to do it. You can modify the probabilities as you see fit.
-    prob_dist = [1] * (number_of_levels - 1) + [number_of_levels]
-
-    # Normalize the probability distribution
-    prob_dist = [p / sum(prob_dist) for p in prob_dist]
-
-    return np.random.choice(number_of_levels, p=prob_dist)
-
-
-def downscale_images(images: torch.Tensor, to_size: int) -> torch.Tensor:
-    return F.interpolate(images, size=(to_size, to_size), mode="nearest")
 
 
 class ScalingDDPM(DDPM):
@@ -63,12 +46,12 @@ class ScalingDDPM(DDPM):
 
         initial_size = x.shape[-1]
 
-        current_level = sample_level(initial_size, self.min_size)
+        current_level = self.sample_level(initial_size, self.min_size)
 
         # Calculate new size
         current_size = initial_size // (2**current_level)
 
-        x = downscale_images(x, current_size)
+        x = scale_images(x, to_size=current_size)
 
         _ts = torch.randint(1, self.n_between + 1, (x.shape[0],)).to(self.device)
 
@@ -117,6 +100,18 @@ class ScalingDDPM(DDPM):
                     )
                 else:
                     current_size *= 2
-                    x_t = upscale_images(x_0, current_size)
+                    x_t = scale_images(x_0, current_size)
 
         return x_0
+
+    def sample_level(self, max_size, min_size):
+        number_of_levels = int(math.log2(max_size) - math.log2(min_size)) + 1
+
+        # Create a probability distribution with higher probability for the last level.
+        # This is just one way to do it. You can modify the probabilities as you see fit.
+        prob_dist = [1] * (number_of_levels - 1) + [number_of_levels]
+
+        # Normalize the probability distribution
+        prob_dist = [p / sum(prob_dist) for p in prob_dist]
+
+        return np.random.choice(number_of_levels, p=prob_dist)

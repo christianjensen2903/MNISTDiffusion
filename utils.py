@@ -26,5 +26,5 @@ def _create_folder_if_not_exist(path: str) -> None:
         os.makedirs(directory)
 
 
-def upscale_images(images: torch.Tensor, to_size: int) -> torch.Tensor:
+def scale_images(images: torch.Tensor, to_size: int) -> torch.Tensor:
     return F.interpolate(images, size=(to_size, to_size), mode="nearest")
