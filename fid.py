@@ -1,4 +1,9 @@
-from pytorch_fid.fid_score import calculate_fid_given_paths
+from pytorch_fid.fid_score import (
+    calculate_fid_given_paths,
+    compute_statistics_of_path,
+    calculate_frechet_distance,
+    InceptionV3,
+)
 from ddpm import DDPM
 from utils import setup_device
 from data_loader import create_mnist_dataloaders
@@ -8,6 +13,10 @@ import torch
 from cold_ddpm import ColdDDPM
 from initializers import RandomColorInitializer
 from unet import ContextUnet
+import json
+
+
+DIMS = 2048
 
 
 def calculate_fid(
@@ -21,17 +30,18 @@ def calculate_fid(
     Calculate the FID score of the model.
     """
 
-    assert count >= 2048, "count must be at least 2048"
+    assert count >= DIMS, "count must be at least 2048"
 
     path = "fid/"
-    _save_real_samples(path + "real/", count, image_size)
-
-    generated_samples = model.sample(count, (1, image_size, image_size))
-    _save_samples(path + "fake/", generated_samples)
-
-    fid = calculate_fid_given_paths(
-        [path + "real/", path + "fake/"], batch_size, device, 2048
+    # _save_real_samples(path + "real/", count, image_size)
+    mu_real, sigma_real = _get_real_statistics(
+        path + "real/", image_size, batch_size, device
     )
+
+    mu_fake, sigma_fake = _get_fake_statistics(
+        path + "fake/", count, image_size, batch_size, device, model
+    )
+    fid = calculate_frechet_distance(mu_real, sigma_real, mu_fake, sigma_fake)
     return fid
 
 
@@ -44,19 +54,52 @@ def _save_samples(path: str, samples: torch.Tensor) -> None:
         save_image(sample, save_path)
 
 
-def _save_real_samples(path: str, count: int, image_size: int) -> None:
+def _get_fake_statistics(
+    path: str, count: int, image_size: int, batch_size: int, device: str, model: DDPM
+) -> tuple:
     """
-    Save real samples from the dataset if they don't exist or there isn't enough.
-    If there aren't enough images, it deletes all existing and saves a new set.
+    Get the fake statistics of the model.
     """
-    _ensure_directory_exists(path)
+    generated_samples = model.sample(count, (1, image_size, image_size))
+    _save_samples(path, generated_samples)
+    inception_model = _get_inception_model(device, DIMS)
+    mu, sigma = compute_statistics_of_path(
+        path, inception_model, batch_size, DIMS, device
+    )
+    return mu, sigma
 
-    saved_files = _get_saved_image_files(path)
-    num_saved = len(saved_files)
 
-    if num_saved < count:
-        _remove_saved_files(path)
-        _save_new_samples(path, count, image_size)
+def _get_real_statistics(
+    path: str, image_size: int, batch_size: int, device: str
+) -> tuple:
+    """
+    Get the real statistics of the dataset.
+    """
+    if not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)
+        _save_real_samples(path, image_size, batch_size)
+
+    if os.path.exists(path + "real_stats.json"):
+        with open(path + "real_stats.json", "r") as f:
+            stats = json.load(f)
+
+        return stats["mu"], stats["sigma"]
+    else:
+        # Calculate statistics
+        inception_model = _get_inception_model(device, DIMS)
+        mu, sigma = compute_statistics_of_path(
+            path, inception_model, batch_size, DIMS, device
+        )
+        with open(path + "real_stats.json", "w") as f:
+            json.dump({"mu": mu, "sigma": sigma.tolist()}, f)
+
+        return mu, sigma
+
+
+def _get_inception_model(device: str, dims: int) -> torch.nn.Module:
+    block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[dims]
+
+    return InceptionV3([block_idx]).to(device)
 
 
 def _ensure_directory_exists(path: str) -> None:
@@ -87,16 +130,15 @@ def _remove_saved_files(path: str) -> None:
         os.remove(os.path.join(path, f))
 
 
-def _save_new_samples(path: str, count: int, image_size: int) -> None:
+def _save_real_samples(path: str, image_size: int, batch_size: int) -> None:
     """
     Save new samples from the dataset.
     """
-    dataloader, _ = create_mnist_dataloaders(count, image_size)
+    _, dataloader = create_mnist_dataloaders(batch_size, image_size)
     for i, (images, _) in enumerate(dataloader):
         for j, image in enumerate(images):
-            save_path = os.path.join(path, f"mnist_real_{j + 1}.png")
+            save_path = os.path.join(path, f"mnist_real_{batch_size * i + j}.png")
             save_image(image, save_path)
-        break  # one batch is enough since batch size is set to the needed number of images
 
 
 if __name__ == "__main__":
