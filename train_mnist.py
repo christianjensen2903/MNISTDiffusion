@@ -1,7 +1,7 @@
 import torch
 from noise_ddpm import NoiseDDPM
-from cold_ddpm import ColdDDPM, Pixelate
-from scaling_ddpm import ScalingDDPM
+from cold_ddpm import ColdDDPM
+from scaling_ddpm import ScalingDDPM, Pixelate
 from ddpm import DDPM
 from unet import ContextUnet
 from torch.utils.data import DataLoader
@@ -62,19 +62,12 @@ def train_model(
         pbar = tqdm(train_dataloader)
         total_loss = 0
 
-        i = 0
-
         for x, c in pbar:
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
 
-            loss, pred, x_t, x = model(x, c)
+            loss = model(x, c)
             loss.backward()
-
-            if i == 0:
-                save_images(x_t, "debug/x_t.png")
-                save_images(x, "debug/x.png")
-                save_images(pred, "debug/pred.png")
 
             total_loss += loss.item()
 
