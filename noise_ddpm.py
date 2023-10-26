@@ -67,6 +67,7 @@ class NoiseDDPM(DDPM):
         # return MSE between added noise, and our predicted noise
         return self.loss_mse(noise, self.nn_model(x_t, c, _ts / self.T))
 
+    @torch.no_grad()
     def sample(self, n_sample, size):
         x_i = torch.randn(n_sample, *size).to(
             self.device

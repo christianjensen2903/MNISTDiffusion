@@ -67,6 +67,7 @@ class ScalingDDPM(DDPM):
 
         return self.loss_mse(x, pred)
 
+    @torch.no_grad()
     def sample(self, n_sample, size):
         c_i = self.get_ci(n_sample)
 
