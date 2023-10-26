@@ -29,8 +29,6 @@ class ColdDDPM(DDPM):
         self.loss_mse = nn.MSELoss()
         self.sample_initializer = initializer
         self.degredation = Pixelate(
-            initializer,
-            device,
             n_between=n_between,
             minimum_pixelation=minimum_pixelation,
         )

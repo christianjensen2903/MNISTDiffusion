@@ -1,21 +1,16 @@
 import torch
 from torchvision import transforms
-from initializers import SampleInitializer
 
 
 class Pixelate:
     def __init__(
         self,
-        sample_initializer: SampleInitializer,
-        device=str,
         n_between: int = 1,
         minimum_pixelation: int = 8,
     ):
         self.n_between = n_between
         self.interpolation = transforms.InterpolationMode.NEAREST
-        self.sample_initializer = sample_initializer
         self.minimum_pixelation = minimum_pixelation
-        self.device = device
 
     def calculate_T(self, image_size):
         """
@@ -24,7 +19,7 @@ class Pixelate:
         """
         size = image_size
         count = 0
-        while size > self.minimum_pixelation / 2:
+        while size > self.minimum_pixelation:
             count += 1
             size //= 2
         return count * self.n_between
@@ -57,19 +52,13 @@ class Pixelate:
 
         from_size = image_size // (2 ** (from_index + 1))
 
-        if from_size <= self.minimum_pixelation / 2:
-            # Using SampleInitializer here
-            from_images = self.sample_initializer.sample(images.shape, None).to(
-                self.device
-            )
-        else:
-            from_transform = transforms.Compose(
-                [
-                    transforms.Resize(from_size, self.interpolation),
-                    transforms.Resize(image_size, self.interpolation),
-                ]
-            )
-            from_images = from_transform(images)
+        from_transform = transforms.Compose(
+            [
+                transforms.Resize(from_size, self.interpolation),
+                transforms.Resize(image_size, self.interpolation),
+            ]
+        )
+        from_images = from_transform(images)
 
         to_size = image_size // (2 ** (from_index))
 

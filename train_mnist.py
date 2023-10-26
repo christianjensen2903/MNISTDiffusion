@@ -3,7 +3,7 @@ from noise_ddpm import NoiseDDPM
 from cold_ddpm import ColdDDPM
 from scaling_ddpm import ScalingDDPM
 from pixelate import Pixelate
-from initializers import RandomColorInitializer
+from initializers import RandomColorInitializer, GMMInitializer
 from ddpm import DDPM
 from unet import ContextUnet
 from torch.utils.data import DataLoader
@@ -47,7 +47,7 @@ def init_wandb(args: ArgsModel) -> None:
         wandb.login()
         wandb.init(
             project="speeding_up_diffusion",
-            config=args.dict(),
+            config=args.model_dump(),
             tags=["mnist", args.model_type.value],
         )
 
@@ -182,10 +182,12 @@ def main(args: ArgsModel):
         batch_size=args.batch_size, image_size=args.image_size
     )
 
-    initializer = RandomColorInitializer()
-    pixelate_T = Pixelate(
-        initializer, device, args.n_between, args.minimum_pixelation
-    ).calculate_T(args.image_size)
+    initializer = GMMInitializer(
+        image_size=args.image_size, to_size=args.minimum_pixelation
+    )
+    pixelate_T = Pixelate(args.n_between, args.minimum_pixelation).calculate_T(
+        args.image_size
+    )
 
     if args.model_type == ModelType.noise:
         model = NoiseDDPM(
