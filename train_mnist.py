@@ -87,14 +87,18 @@ def train_model(
 
         total_time += end_time - start_time
 
-        save_generated_samples(model, args, ep)
+        samples = generate_samples(model, args, device, 2048)
+
+        save_images(
+            samples[: (5 * args.n_classes)], args.save_dir + f"image_ep{ep}.png"
+        )
+
         avg_loss = total_loss / len(train_dataloader)
         if args.calculate_fid:
             fid = calculate_fid(
-                model,
+                samples,
                 device=device,
                 batch_size=args.batch_size,
-                count=2048,
                 image_size=args.image_size,
             )
         else:
@@ -109,6 +113,20 @@ def train_model(
             save_model(model, args.save_dir + "model.pth")
 
     evaluate_model(model, args, device)
+
+
+def generate_samples(
+    model: DDPM, args: ArgsModel, device: str, count: int
+) -> torch.Tensor:
+    generated_samples = torch.tensor([])
+    while len(generated_samples) < count:
+        samples = model.sample(args.batch_size, (1, args.image_size, args.image_size))
+        if device == "cuda":
+            samples = samples.cuda().cpu()
+
+        generated_samples = torch.cat((generated_samples, samples))
+    generated_samples = generated_samples[:count]
+    return generated_samples
 
 
 def log_wandb(
@@ -135,24 +153,17 @@ def evaluate_model(
     device: str,
 ):
     print("\nEvaluating model...")
-    count = 2048
-    start_time = time.time()
-    generated_samples = torch.tensor([])
-    while len(generated_samples) < count:
-        samples = model.sample(args.batch_size, (1, args.image_size, args.image_size))
-        if device == "cuda":
-            samples = samples.cuda().cpu()
 
-        generated_samples = torch.cat((generated_samples, samples))
-    generated_samples = generated_samples[:count]
+    start_time = time.time()
+
+    samples = generate_samples(model, args, device, 10000)
 
     sampling_time = time.time() - start_time
 
     final_fid = calculate_fid(
-        model,
+        samples,
         device=device,
         batch_size=args.batch_size,
-        count=count,
         image_size=args.image_size,
     )
 
@@ -161,19 +172,6 @@ def evaluate_model(
 
     if args.log_wandb:
         wandb.log({"sampling_time": sampling_time, "final_fid": final_fid})
-
-
-def save_generated_samples(
-    model: DDPM,
-    args: ArgsModel,
-    ep: int,
-) -> None:
-    model.eval()
-    with torch.no_grad():
-        n_sample = 4 * args.n_classes
-        x_gen = model.sample(n_sample, (1, args.image_size, args.image_size))
-
-        save_images(x_gen, args.save_dir + f"image_ep{ep}.png")
 
 
 def main(args: ArgsModel):

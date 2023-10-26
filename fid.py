@@ -20,16 +20,15 @@ DIMS = 2048
 
 
 def calculate_fid(
-    model: DDPM,
+    samples: torch.Tensor,
     device: str,
     batch_size: int = 32,
-    count: int = 2048,
     image_size: int = 28,
 ) -> float:
     """
     Calculate the FID score of the model.
     """
-
+    count = samples.shape[0]
     assert count >= DIMS, "count must be at least 2048"
 
     path = "fid/"
@@ -37,7 +36,7 @@ def calculate_fid(
     mu_real, sigma_real = _get_real_statistics(path, image_size, batch_size, device)
 
     mu_fake, sigma_fake = _get_fake_statistics(
-        path, count, image_size, batch_size, device, model
+        path, image_size, batch_size, device, samples
     )
 
     fid = calculate_frechet_distance(mu_real, sigma_real, mu_fake, sigma_fake)
@@ -54,21 +53,18 @@ def _save_samples(path: str, samples: torch.Tensor) -> None:
 
 
 def _get_fake_statistics(
-    path: str, count: int, image_size: int, batch_size: int, device: str, model: DDPM
+    path: str,
+    count: int,
+    image_size: int,
+    batch_size: int,
+    device: str,
+    samples: torch.Tensor,
 ) -> tuple:
     """
     Get the fake statistics of the model.
     """
-    generated_samples = torch.tensor([])
-    while len(generated_samples) < count:
-        samples = model.sample(batch_size, (1, image_size, image_size))
-        if device == "cuda":
-            samples = samples.cuda().cpu()
 
-        generated_samples = torch.cat((generated_samples, samples))
-    generated_samples = generated_samples[:count]
-
-    _save_samples(path + "fake", generated_samples)
+    _save_samples(path + "fake", samples)
     inception_model = _get_inception_model(device, DIMS)
     mu, sigma = compute_statistics_of_path(
         path + "fake", inception_model, batch_size, DIMS, device
