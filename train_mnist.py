@@ -14,6 +14,12 @@ from tqdm import tqdm
 from utils import save_images, save_model, setup_device
 from enum import Enum
 from fid import calculate_fid
+import time
+
+
+# TODO: Check that FID logging works
+# TODO: Add time logging
+# TODO: Add final evaluation of FID and speed
 
 
 class ModelType(str, Enum):
@@ -56,7 +62,11 @@ def train_model(
 ) -> None:
     optim = torch.optim.Adam(model.parameters(), lr=args.lr)
 
+    total_time = 0
+
     for ep in range(args.epochs):
+        start_time = time.time()
+
         print(f"epoch {ep}")
         model.train()
 
@@ -78,6 +88,10 @@ def train_model(
             pbar.set_description(f"loss: {loss.item():.4f}")
             optim.step()
 
+        end_time = time.time()
+
+        total_time += end_time - start_time
+
         save_generated_samples(model, args, ep)
         avg_loss = total_loss / len(train_dataloader)
         fid = calculate_fid(
@@ -89,7 +103,7 @@ def train_model(
         )
         print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f}")
         if args.log_wandb:
-            log_wandb(ep, avg_loss, fid, args)
+            log_wandb(ep, avg_loss, fid, total_time, args)
 
         if args.save_model and ep == int(args.epochs - 1):
             save_model(model, args.save_dir + "model.pth")
@@ -99,6 +113,7 @@ def log_wandb(
     ep: int,
     train_loss: float,
     fid: float,
+    total_time: float,
     args: ArgsModel,
 ) -> None:
     wandb.log(
@@ -106,6 +121,7 @@ def log_wandb(
             "epoch": ep + 1,
             "train_loss": train_loss,
             "fid": fid,
+            "total_time": total_time,
             f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
         }
     )
