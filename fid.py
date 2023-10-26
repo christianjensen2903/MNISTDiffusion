@@ -58,7 +58,16 @@ def _get_fake_statistics(
     """
     Get the fake statistics of the model.
     """
-    generated_samples = model.sample(count, (1, image_size, image_size))
+    generated_samples = torch.tensor([])
+    while len(generated_samples) < count:
+        generated_samples = torch.cat(
+            [
+                generated_samples,
+                model.sample(batch_size, (1, image_size, image_size)),
+            ]
+        )
+    generated_samples = generated_samples[:count]
+
     _save_samples(path + "fake", generated_samples)
     inception_model = _get_inception_model(device, DIMS)
     mu, sigma = compute_statistics_of_path(
