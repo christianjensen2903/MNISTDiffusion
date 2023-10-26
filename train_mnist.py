@@ -17,11 +17,6 @@ from fid import calculate_fid
 import time
 
 
-# TODO: Check that FID logging works
-# TODO: Add time logging
-# TODO: Add final evaluation of FID and speed
-
-
 class ModelType(str, Enum):
     cold = "cold"
     noise = "noise"
@@ -101,12 +96,16 @@ def train_model(
             count=2048,
             image_size=args.image_size,
         )
-        print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f}")
+
+        print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f}\n")
+
         if args.log_wandb:
             log_wandb(ep, avg_loss, fid, total_time, args)
 
         if args.save_model and ep == int(args.epochs - 1):
             save_model(model, args.save_dir + "model.pth")
+
+    evaluate_model(model, args, device)
 
 
 def log_wandb(
@@ -125,6 +124,40 @@ def log_wandb(
             f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
         }
     )
+
+
+def evaluate_model(
+    model: DDPM,
+    args: ArgsModel,
+    device: str,
+):
+    print("\nEvaluating model...")
+    count = 2048
+    start_time = time.time()
+    generated_samples = torch.tensor([])
+    while len(generated_samples) < count:
+        samples = model.sample(args.batch_size, (1, args.image_size, args.image_size))
+        if device == "cuda":
+            samples = samples.cuda().cpu()
+
+        generated_samples = torch.cat((generated_samples, samples))
+    generated_samples = generated_samples[:count]
+
+    sampling_time = time.time() - start_time
+
+    final_fid = calculate_fid(
+        model,
+        device=device,
+        batch_size=args.batch_size,
+        count=count,
+        image_size=args.image_size,
+    )
+
+    print(f"Final FID: {final_fid:.4f}")
+    print(f"Sampling time: {sampling_time:.4f}")
+
+    if args.log_wandb:
+        wandb.log({"sampling_time": sampling_time, "final_fid": final_fid})
 
 
 def save_generated_samples(
