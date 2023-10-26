@@ -27,7 +27,7 @@ class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 4
     n_between: int = 10
-    minimum_pixelation: int = 8
+    minimum_pixelation: int = 4
     n_feat = 32
     epochs: int = 50
     lr: float = 4e-4
@@ -37,6 +37,7 @@ class ArgsModel(BaseModel):
     n_classes: int = 10
     model_type: ModelType = ModelType.cold
     log_wandb: bool = False
+    calculate_fid: bool = False
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
     models_dir = "./models/"
@@ -47,7 +48,7 @@ def init_wandb(args: ArgsModel) -> None:
         wandb.login()
         wandb.init(
             project="speeding_up_diffusion",
-            config=args.model_dump(),
+            config=args.dict(),
             tags=["mnist", args.model_type.value],
         )
 
@@ -70,7 +71,6 @@ def train_model(
 
         pbar = tqdm(train_dataloader)
         total_loss = 0
-
         for x, c in pbar:
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
@@ -89,13 +89,16 @@ def train_model(
 
         save_generated_samples(model, args, ep)
         avg_loss = total_loss / len(train_dataloader)
-        fid = calculate_fid(
-            model,
-            device=device,
-            batch_size=args.batch_size,
-            count=2048,
-            image_size=args.image_size,
-        )
+        if args.calculate_fid:
+            fid = calculate_fid(
+                model,
+                device=device,
+                batch_size=args.batch_size,
+                count=2048,
+                image_size=args.image_size,
+            )
+        else:
+            fid = 0
 
         print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f}\n")
 

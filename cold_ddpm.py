@@ -4,6 +4,7 @@ from unet import ContextUnet
 from ddpm import DDPM
 from pixelate import Pixelate
 from initializers import SampleInitializer
+from utils import save_images
 
 
 class ColdDDPM(DDPM):

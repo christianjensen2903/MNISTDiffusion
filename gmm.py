@@ -41,7 +41,8 @@ def train_gmm_on_pixelated_mnist(
 def save_gmm_model(gmms, filename="gmm_model.pkl"):
     """Save the GMM models to a file."""
     # Check if the directory exists
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    if os.path.dirname(filename) != "":
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
 
     joblib.dump(gmms, filename)
 
