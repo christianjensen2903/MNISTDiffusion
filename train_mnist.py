@@ -38,19 +38,16 @@ class ArgsModel(BaseModel):
     model_type: ModelType = ModelType.cold
     log_wandb: bool = False
     calculate_fid: bool = False
+    sweep_id: str = None
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
     models_dir = "./models/"
 
-
-def init_wandb(args: ArgsModel) -> None:
-    if args.log_wandb:
-        wandb.login()
-        wandb.init(
-            project="speeding_up_diffusion",
-            config=args.dict(),
-            tags=["mnist", args.model_type.value],
-        )
+    @classmethod
+    def from_wandb_config(cls, wandb_config: dict) -> "ArgsModel":
+        # Update default values with those from wandb.config
+        updated_values = {**cls().dict(), **wandb_config}
+        return cls(**updated_values)
 
 
 def train_model(
@@ -174,8 +171,18 @@ def evaluate_model(
         wandb.log({"sampling_time": sampling_time, "final_fid": final_fid})
 
 
+def initialize_wandb(args: ArgsModel) -> ArgsModel:
+    wandb.init(
+        project="speeding_up_diffusion",
+        config=args.dict() if args.sweep_id is None else None,
+        tags=["mnist", args.model_type.value],
+    )
+    return args.from_wandb_config(wandb.config)
+
+
 def main(args: ArgsModel):
-    init_wandb(args)
+    if args.log_wandb:
+        args = initialize_wandb(args)
 
     device = setup_device()
 
@@ -233,4 +240,11 @@ def main(args: ArgsModel):
 
 if __name__ == "__main__":
     args = ArgsModel()
-    main(args)
+
+    if args.log_wandb:
+        wandb.login()
+
+    if args.sweep_id is not None and args.log_wandb:
+        wandb.agent(args.sweep_id, main, count=20)
+    else:
+        main(args)
