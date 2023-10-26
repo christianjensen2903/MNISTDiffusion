@@ -39,6 +39,7 @@ def calculate_fid(
     mu_fake, sigma_fake = _get_fake_statistics(
         path, count, image_size, batch_size, device, model
     )
+
     fid = calculate_frechet_distance(mu_real, sigma_real, mu_fake, sigma_fake)
     return fid
 
@@ -60,12 +61,11 @@ def _get_fake_statistics(
     """
     generated_samples = torch.tensor([])
     while len(generated_samples) < count:
-        generated_samples = torch.cat(
-            [
-                generated_samples,
-                model.sample(batch_size, (1, image_size, image_size)),
-            ]
-        )
+        samples = model.sample(batch_size, (1, image_size, image_size))
+        if device == "cuda":
+            samples = samples.cuda().cpu()
+
+        generated_samples = torch.cat((generated_samples, samples))
     generated_samples = generated_samples[:count]
 
     _save_samples(path + "fake", generated_samples)
