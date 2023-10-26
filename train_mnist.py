@@ -184,7 +184,9 @@ def main(args: ArgsModel):
     )
 
     initializer = GMMInitializer(
-        image_size=args.image_size, to_size=args.minimum_pixelation
+        image_size=args.image_size,
+        to_size=args.minimum_pixelation,
+        path=f"models/gmm_{args.minimum_pixelation}.pkl",
     )
     pixelate_T = Pixelate(args.n_between, args.minimum_pixelation).calculate_T(
         args.image_size

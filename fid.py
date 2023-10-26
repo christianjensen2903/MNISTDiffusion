@@ -35,9 +35,7 @@ def calculate_fid(
 
     mu_real, sigma_real = _get_real_statistics(path, image_size, batch_size, device)
 
-    mu_fake, sigma_fake = _get_fake_statistics(
-        path, image_size, batch_size, device, samples
-    )
+    mu_fake, sigma_fake = _get_fake_statistics(path, batch_size, device, samples)
 
     fid = calculate_frechet_distance(mu_real, sigma_real, mu_fake, sigma_fake)
     return fid
@@ -54,8 +52,6 @@ def _save_samples(path: str, samples: torch.Tensor) -> None:
 
 def _get_fake_statistics(
     path: str,
-    count: int,
-    image_size: int,
     batch_size: int,
     device: str,
     samples: torch.Tensor,
