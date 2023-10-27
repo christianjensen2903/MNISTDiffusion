@@ -49,5 +49,5 @@ class Pixelate:
             relative_t = t % (self.n_between + 1)
 
             # Interpolate between two images
-            interpolation = t / (self.n_between + 1)
+            interpolation = relative_t / (self.n_between + 1)
             return (1 - interpolation) * upper_image + interpolation * lower_image
