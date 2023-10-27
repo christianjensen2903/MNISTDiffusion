@@ -4,10 +4,27 @@ from unet import ContextUnet
 from ddpm import DDPM
 import numpy as np
 import torch.nn.functional as F
-from utils import scale_images
+from utils import scale_images, save_images
 import math
 from initializers import SampleInitializer
 from pixelate import Pixelate
+
+
+class LevelScheduler:
+    def get_probabilities(self, number_of_levels):
+        raise NotImplementedError("Must be implemented by subclasses.")
+
+
+class ArithmeticScheduler(LevelScheduler):
+    def get_probabilities(self, number_of_levels):
+        prob_dist = [i for i in range(1, number_of_levels + 1)]
+        return [p / sum(prob_dist) for p in prob_dist]
+
+
+class GeometricScheduler(LevelScheduler):
+    def get_probabilities(self, number_of_levels):
+        prob_dist = [2**i for i in range(number_of_levels)]
+        return [p / sum(prob_dist) for p in prob_dist]
 
 
 class ScalingDDPM(DDPM):
@@ -20,6 +37,8 @@ class ScalingDDPM(DDPM):
         n_between: int,
         initializer: SampleInitializer,
         minimum_pixelation: int,
+        positional_degree: int,
+        level_scheduler: LevelScheduler = ArithmeticScheduler(),
     ):
         super(ScalingDDPM, self).__init__(
             unet=unet,
@@ -39,6 +58,8 @@ class ScalingDDPM(DDPM):
         self.T = T
         self.n_between = n_between
         self.min_size = minimum_pixelation
+        self.positional_degree = positional_degree
+        self.scheduler = level_scheduler
 
     def forward(self, x, c):
         """
@@ -47,7 +68,7 @@ class ScalingDDPM(DDPM):
 
         initial_size = x.shape[-1]
 
-        current_level = self.sample_level(initial_size, self.min_size)
+        current_level = self._sample_level(initial_size, self.min_size * 2)
 
         # Calculate new size
         current_size = initial_size // (2**current_level)
@@ -60,10 +81,14 @@ class ScalingDDPM(DDPM):
             [self.degredation(x, t) for x, t in zip(x, _ts)], dim=0
         ).unsqueeze(1)
 
-        # return MSE between added noise, and our predicted noise
-        pred = self.nn_model(x_t, c, (self.n_between * current_level + _ts) / self.T)
+        x_t_pos = self._add_positional_embedding(x_t)
 
-        return self.loss_mse(x, pred)
+        # return MSE between added noise, and our predicted noise
+        pred = self.nn_model(
+            x_t_pos, c, (self.n_between * current_level + _ts) / self.T
+        )
+
+        return self.loss_mse(x, pred), pred, x, x_t
 
     @torch.no_grad()
     def sample(self, n_sample, size):
@@ -77,10 +102,14 @@ class ScalingDDPM(DDPM):
             ]
         ).to(self.device)
 
+        x_t = scale_images(x_t, to_size=self.min_size * 2)
+
+        save_images(x_t, "debug/sample/start.png")
+
         # Sample random seed
         seed = torch.randint(0, 100000, (1,)).item()
 
-        current_size = 8
+        current_size = self.min_size * 2
         while current_size <= size[-1]:
             current_level = int(math.log2(size[-1]) - math.log2(current_size))
             for relative_t in range(self.n_between, 0, -1):
@@ -88,7 +117,11 @@ class ScalingDDPM(DDPM):
                 t_is = torch.tensor([t]).to(self.device)
                 t_is = t_is.repeat(n_sample)
 
-                x_0 = self.nn_model(x_t, c_i, t_is / self.T)
+                x_t_pos = self._add_positional_embedding(x_t)
+
+                x_0 = self.nn_model(x_t_pos, c_i, t_is / self.T)
+
+                save_images(x_0, f"debug/sample/{t}.png")
 
                 if relative_t - 1 > 0:
                     x_t = (
@@ -100,16 +133,44 @@ class ScalingDDPM(DDPM):
                     current_size *= 2
                     x_t = scale_images(x_0, current_size)
 
+                save_images(x_t, f"debug/sample/{t}_t.png")
+
         return x_0
 
-    def sample_level(self, max_size, min_size):
+    def _add_positional_embedding(self, x):
+        size = x.shape[-1]
+
+        # Concatenate positional embedding
+        x_matrix, y_matrix = self._get_pixel_coordinates(size)
+
+        positional_embedding = self._get_positional_embedding(x_matrix, y_matrix).to(
+            self.device
+        )
+
+        n_samples = x.shape[0]
+        positional_embedding = positional_embedding.repeat(n_samples, 1, 1, 1)
+
+        return torch.cat([x, positional_embedding], dim=1)
+
+    def _get_positional_embedding(self, x_matrix, y_matrix):
+        layers = []
+
+        for d in range(self.positional_degree):
+            freq = 2**d
+            layers.append(torch.sin(freq * x_matrix))
+            layers.append(torch.cos(freq * x_matrix))
+            layers.append(torch.sin(freq * y_matrix))
+            layers.append(torch.cos(freq * y_matrix))
+
+        return torch.stack(layers, dim=0)
+
+    def _get_pixel_coordinates(self, size):
+        row = torch.arange(0, size) / (size - 1)
+        x_matrix = torch.stack([row] * size)
+        y_matrix = x_matrix.T
+        return x_matrix, y_matrix
+
+    def _sample_level(self, max_size, min_size):
         number_of_levels = int(math.log2(max_size) - math.log2(min_size)) + 1
-
-        # Create a probability distribution with higher probability for the last level.
-        # This is just one way to do it. You can modify the probabilities as you see fit.
-        prob_dist = [1] * (number_of_levels - 1) + [number_of_levels]
-
-        # Normalize the probability distribution
-        prob_dist = [p / sum(prob_dist) for p in prob_dist]
-
+        prob_dist = self.scheduler.get_probabilities(number_of_levels)
         return np.random.choice(number_of_levels, p=prob_dist)

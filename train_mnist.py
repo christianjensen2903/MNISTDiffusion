@@ -27,15 +27,16 @@ class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 4
     n_between: int = 10
-    minimum_pixelation: int = 4
-    n_feat = 32
+    minimum_pixelation: int = 2
+    n_feat = 64
     epochs: int = 50
     lr: float = 4e-4
+    positional_degree: int = 6
     betas = (1e-4, 0.02)
     log_freq: int = 200
     image_size: int = 16
     n_classes: int = 10
-    model_type: ModelType = ModelType.cold
+    model_type: ModelType = ModelType.scaling
     log_wandb: bool = False
     calculate_fid: bool = False
     sweep_id: str = None
@@ -68,12 +69,19 @@ def train_model(
 
         pbar = tqdm(train_dataloader)
         total_loss = 0
+        i = 0
         for x, c in pbar:
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
 
-            loss = model(x, c)
+            loss, pred, x, x_t = model(x, c)
             loss.backward()
+
+            if i == 0:
+                save_images(x, "debug/x.png")
+                save_images(x_t, "debug/x_t.png")
+                save_images(pred, "debug/pred.png")
+                i += 1
 
             total_loss += loss.item()
 
@@ -202,7 +210,10 @@ def main(args: ArgsModel):
     if args.model_type == ModelType.noise:
         model = NoiseDDPM(
             unet=ContextUnet(
-                in_channels=1, n_feat=args.n_feat, n_classes=args.n_classes
+                in_channels=1,
+                out_channels=1,
+                n_feat=args.n_feat,
+                n_classes=args.n_classes,
             ),
             T=args.timesteps,
             device=device,
@@ -212,7 +223,10 @@ def main(args: ArgsModel):
     elif args.model_type == ModelType.cold:
         model = ColdDDPM(
             unet=ContextUnet(
-                in_channels=1, n_feat=args.n_feat, n_classes=args.n_classes
+                in_channels=1,
+                out_channels=1,
+                n_feat=args.n_feat,
+                n_classes=args.n_classes,
             ),
             T=pixelate_T,
             device=device,
@@ -224,7 +238,10 @@ def main(args: ArgsModel):
     elif args.model_type == ModelType.scaling:
         model = ScalingDDPM(
             unet=ContextUnet(
-                in_channels=1, n_feat=args.n_feat, n_classes=args.n_classes
+                in_channels=1 + args.positional_degree * 4,
+                out_channels=1,
+                n_feat=args.n_feat,
+                n_classes=args.n_classes,
             ),
             T=pixelate_T,
             device=device,
@@ -232,6 +249,7 @@ def main(args: ArgsModel):
             n_between=args.n_between,
             initializer=initializer,
             minimum_pixelation=args.minimum_pixelation,
+            positional_degree=args.positional_degree,
         )
     model.to(device)
 

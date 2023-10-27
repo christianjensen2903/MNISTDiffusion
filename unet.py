@@ -91,10 +91,11 @@ class EmbedFC(nn.Module):
 
 
 class ContextUnet(nn.Module):
-    def __init__(self, in_channels, n_feat=256, n_classes=10):
+    def __init__(self, in_channels, out_channels, n_feat=256, n_classes=10):
         super(ContextUnet, self).__init__()
 
         self.in_channels = in_channels
+        self.out_channels = out_channels
         self.n_feat = n_feat
         self.n_classes = n_classes
 
@@ -121,7 +122,7 @@ class ContextUnet(nn.Module):
             nn.Conv2d(2 * n_feat, n_feat, 3, 1, 1),
             nn.GroupNorm(8, n_feat),
             nn.ReLU(),
-            nn.Conv2d(n_feat, self.in_channels, 3, 1, 1),
+            nn.Conv2d(n_feat, self.out_channels, 3, 1, 1),
         )
 
     def forward(self, x, c, t):
