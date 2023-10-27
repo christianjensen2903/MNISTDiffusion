@@ -183,7 +183,9 @@ def initialize_wandb(args: ArgsModel) -> ArgsModel:
     return args.from_wandb_config(wandb.config)
 
 
-def main(args: ArgsModel):
+def main():
+    args = ArgsModel()
+
     if args.log_wandb:
         args = initialize_wandb(args)
 
@@ -261,4 +263,4 @@ if __name__ == "__main__":
     if args.sweep_id is not None and args.log_wandb:
         wandb.agent(args.sweep_id, main, count=20)
     else:
-        main(args)
+        main()
