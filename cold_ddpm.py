@@ -77,7 +77,7 @@ class ColdDDPM(DDPM):
 
         # return MSE between added noise, and our predicted noise
         pred = self.nn_model(x_t, c, _ts / self.T)
-        return self.loss_mse(x, pred), pred, x, x_t
+        return self.loss_mse(x, pred)
 
     @torch.no_grad()
     def sample(self, n_sample, size):
@@ -88,19 +88,13 @@ class ColdDDPM(DDPM):
             [self.sample_initializer.sample((1,) + size, c) for c in c_i]
         ).to(self.device)
 
-        save_images(x_t, "debug/sample/start.png")
-
         for t in range(self.T, 0, -1):
             t_is = torch.tensor([t / self.T]).to(self.device)
             t_is = t_is.repeat(n_sample)
 
             x_0 = self.nn_model(x_t, c_i, t_is)
 
-            save_images(x_0, f"debug/sample/{t}.png")
-
             x_t = self.degredation(x_0, (t - 1))
-
-            save_images(x_t, f"debug/sample/{t}_t.png")
 
         return x_0
 

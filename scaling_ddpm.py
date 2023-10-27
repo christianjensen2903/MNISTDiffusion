@@ -94,7 +94,7 @@ class ScalingDDPM(DDPM):
             x_t_pos, c, ((self.n_between + 1) * current_level + _ts) / self.T
         )
 
-        return self.loss_mse(x, pred), pred, x, x_t
+        return self.loss_mse(x, pred)
 
     @torch.no_grad()
     def sample(self, n_sample, size):
@@ -110,8 +110,6 @@ class ScalingDDPM(DDPM):
 
         x_t = scale_images(x_t, to_size=self.min_size * 2)
 
-        save_images(x_t, "debug/sample/start.png")
-
         current_size = self.min_size * 2
 
         t = self.T
@@ -125,15 +123,11 @@ class ScalingDDPM(DDPM):
 
                 x_0 = self.nn_model(x_t_pos, c_i, t_is / self.T)
 
-                save_images(x_0, f"debug/sample/{t}.png")
-
                 if relative_t - 1 > 0:
                     x_t = self.degredation(x_0, (relative_t - 1))
                 else:
                     current_size *= 2
                     x_t = scale_images(x_0, current_size)
-
-                save_images(x_t, f"debug/sample/{t}_t.png")
 
                 t -= 1
 
