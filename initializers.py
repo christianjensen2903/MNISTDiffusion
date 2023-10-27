@@ -18,8 +18,16 @@ class RandomColorInitializer(SampleInitializer):
 
 
 class GMMInitializer(SampleInitializer):
-    def __init__(self, path: str = "gmm_model.pkl", image_size: int = 28, to_size=4):
-        self.gmms = load_if_exists(path, image_size, to_size=to_size, n_components=1)
+    def __init__(
+        self,
+        path: str = "gmm_model.pkl",
+        image_size: int = 28,
+        to_size=4,
+        n_components=10,
+    ):
+        self.gmms = load_if_exists(
+            path, image_size, to_size=to_size, n_components=n_components
+        )
 
     def sample(self, size, label):
         n_sample = size[0]

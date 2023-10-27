@@ -35,6 +35,7 @@ class ArgsModel(BaseModel):
     betas = (1e-4, 0.02)
     log_freq: int = 200
     image_size: int = 16
+    gmm_components: int = 1
     n_classes: int = 10
     model_type: ModelType = ModelType.scaling
     log_wandb: bool = False
@@ -201,7 +202,8 @@ def main(args: ArgsModel):
     initializer = GMMInitializer(
         image_size=args.image_size,
         to_size=args.minimum_pixelation,
-        path=f"models/gmm_{args.minimum_pixelation}.pkl",
+        path=f"models/gmm_{args.minimum_pixelation}_{args.gmm_components}.pkl",
+        n_components=args.gmm_components,
     )
     pixelate_T = Pixelate(args.n_between, args.minimum_pixelation).calculate_T(
         args.image_size
