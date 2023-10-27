@@ -26,7 +26,7 @@ class ModelType(str, Enum):
 class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 4
-    n_between: int = 10
+    n_between: int = 1
     minimum_pixelation: int = 2
     n_feat = 64
     epochs: int = 50

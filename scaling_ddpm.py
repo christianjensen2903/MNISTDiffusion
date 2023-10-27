@@ -81,7 +81,7 @@ class ScalingDDPM(DDPM):
 
         x = scale_images(x, to_size=current_size)
 
-        _ts = torch.randint(2, self.n_between + 1, (x.shape[0],)).to(self.device)
+        _ts = torch.randint(1, self.n_between + 1, (x.shape[0],)).to(self.device)
 
         x_t = torch.cat(
             [self.degredation(x, t) for x, t in zip(x, _ts)], dim=0
@@ -91,7 +91,7 @@ class ScalingDDPM(DDPM):
 
         # return MSE between added noise, and our predicted noise
         pred = self.nn_model(
-            x_t_pos, c, (self.n_between * current_level + _ts) / self.T
+            x_t_pos, c, ((self.n_between + 1) * current_level + _ts) / self.T
         )
 
         return self.loss_mse(x, pred), pred, x, x_t
@@ -112,14 +112,12 @@ class ScalingDDPM(DDPM):
 
         save_images(x_t, "debug/sample/start.png")
 
-        # Sample random seed
-        seed = torch.randint(0, 100000, (1,)).item()
-
         current_size = self.min_size * 2
+
+        t = self.T
+
         while current_size <= size[-1]:
-            current_level = int(math.log2(size[-1]) - math.log2(current_size))
-            for relative_t in range(self.n_between, 1, -1):
-                t = self.n_between * current_level + relative_t
+            for relative_t in range(self.n_between + 1, 0, -1):
                 t_is = torch.tensor([t]).to(self.device)
                 t_is = t_is.repeat(n_sample)
 
@@ -129,17 +127,17 @@ class ScalingDDPM(DDPM):
 
                 save_images(x_0, f"debug/sample/{t}.png")
 
-                if relative_t - 1 > 1:
-                    x_t = (
-                        x_t
-                        - self.degredation(x_0, relative_t, seed)
-                        + self.degredation(x_0, (relative_t - 1), seed)
-                    )
+                if relative_t - 1 > 0:
+                    x_t = self.degredation(x_0, (relative_t - 1))
                 else:
                     current_size *= 2
                     x_t = scale_images(x_0, current_size)
 
+                t -= 1
+
                 save_images(x_t, f"debug/sample/{t}_t.png")
+
+        print(f"\n\n\n")
 
         return x_0
 
