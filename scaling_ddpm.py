@@ -11,7 +11,7 @@ from pixelate import Pixelate
 
 
 class LevelScheduler:
-    def get_probabilities(self, number_of_levels):
+    def get_probabilities(self, number_of_levels, **kwargs):
         raise NotImplementedError("Must be implemented by subclasses.")
 
 
@@ -21,9 +21,15 @@ class ArithmeticScheduler(LevelScheduler):
         return [p / sum(prob_dist) for p in prob_dist]
 
 
+class PowerScheduler(LevelScheduler):
+    def get_probabilities(self, number_of_levels, power=0.4):
+        prob_dist = [i**power for i in range(1, number_of_levels + 1)]
+        return [p / sum(prob_dist) for p in prob_dist]
+
+
 class GeometricScheduler(LevelScheduler):
-    def get_probabilities(self, number_of_levels):
-        prob_dist = [2**i for i in range(number_of_levels)]
+    def get_probabilities(self, number_of_levels, base=1.5):
+        prob_dist = [base**i for i in range(number_of_levels)]
         return [p / sum(prob_dist) for p in prob_dist]
 
 
@@ -38,7 +44,7 @@ class ScalingDDPM(DDPM):
         initializer: SampleInitializer,
         minimum_pixelation: int,
         positional_degree: int,
-        level_scheduler: LevelScheduler = ArithmeticScheduler(),
+        level_scheduler: LevelScheduler = PowerScheduler(),
     ):
         super(ScalingDDPM, self).__init__(
             unet=unet,
@@ -75,7 +81,7 @@ class ScalingDDPM(DDPM):
 
         x = scale_images(x, to_size=current_size)
 
-        _ts = torch.randint(1, self.n_between + 1, (x.shape[0],)).to(self.device)
+        _ts = torch.randint(2, self.n_between + 1, (x.shape[0],)).to(self.device)
 
         x_t = torch.cat(
             [self.degredation(x, t) for x, t in zip(x, _ts)], dim=0
@@ -112,7 +118,7 @@ class ScalingDDPM(DDPM):
         current_size = self.min_size * 2
         while current_size <= size[-1]:
             current_level = int(math.log2(size[-1]) - math.log2(current_size))
-            for relative_t in range(self.n_between, 0, -1):
+            for relative_t in range(self.n_between, 1, -1):
                 t = self.n_between * current_level + relative_t
                 t_is = torch.tensor([t]).to(self.device)
                 t_is = t_is.repeat(n_sample)
@@ -123,7 +129,7 @@ class ScalingDDPM(DDPM):
 
                 save_images(x_0, f"debug/sample/{t}.png")
 
-                if relative_t - 1 > 0:
+                if relative_t - 1 > 1:
                     x_t = (
                         x_t
                         - self.degredation(x_0, relative_t, seed)
