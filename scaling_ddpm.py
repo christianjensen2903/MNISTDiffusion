@@ -81,7 +81,7 @@ class ScalingDDPM(DDPM):
 
         x = scale_images(x, to_size=current_size)
 
-        _ts = torch.randint(1, self.n_between + 1, (x.shape[0],)).to(self.device)
+        _ts = torch.randint(1, self.n_between + 2, (x.shape[0],)).to(self.device)
 
         x_t = torch.cat(
             [self.degredation(x, t) for x, t in zip(x, _ts)], dim=0
@@ -133,11 +133,9 @@ class ScalingDDPM(DDPM):
                     current_size *= 2
                     x_t = scale_images(x_0, current_size)
 
-                t -= 1
-
                 save_images(x_t, f"debug/sample/{t}_t.png")
 
-        print(f"\n\n\n")
+                t -= 1
 
         return x_0
 

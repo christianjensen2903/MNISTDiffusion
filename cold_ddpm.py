@@ -69,7 +69,7 @@ class ColdDDPM(DDPM):
         this method is used in training, so samples t and noise randomly
         """
 
-        _ts = torch.randint(1, self.T, (x.shape[0],)).to(self.device)
+        _ts = torch.randint(1, self.T + 1, (x.shape[0],)).to(self.device)
 
         x_t = torch.cat(
             [self.degredation(x, t) for x, t in zip(x, _ts)], dim=0
@@ -90,7 +90,7 @@ class ColdDDPM(DDPM):
 
         save_images(x_t, "debug/sample/start.png")
 
-        for t in range(self.T - 1, 1, -1):
+        for t in range(self.T, 0, -1):
             t_is = torch.tensor([t / self.T]).to(self.device)
             t_is = t_is.repeat(n_sample)
 

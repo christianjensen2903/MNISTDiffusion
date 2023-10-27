@@ -107,12 +107,12 @@ def display_samples(samples):
 
 def main():
     path = "models/gmm_model.pkl"
-    gmms = train_gmm_on_pixelated_mnist(image_size=16, to_size=2, n_components=10)
+    gmms = train_gmm_on_pixelated_mnist(image_size=16, to_size=2, n_components=1)
     save_gmm_model(gmms, path)
     gmms = load_gmm_model(path)
 
     # For instance, to sample from class 0
-    samples_for_class_0 = sample_from_gmm_for_class(gmms, label=7, n_samples=5)
+    samples_for_class_0 = sample_from_gmm_for_class(gmms, label=0, n_samples=10)
 
     # Display the samples
     display_samples(samples_for_class_0)
