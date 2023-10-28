@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from tqdm import tqdm
 from utils import save_images, save_model, setup_device
 from enum import Enum
-from fid import calculate_fid
+from metrics import calculate_fid, calculate_ssim
 import time
 
 
@@ -27,14 +27,14 @@ class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 4
     n_between: int = 1
-    minimum_pixelation: int = 2
+    minimum_pixelation: int = 4
     n_feat = 64
     epochs: int = 50
     lr: float = 4e-4
     positional_degree: int = 6
     betas = (1e-4, 0.02)
     log_freq: int = 200
-    image_size: int = 16
+    image_size: int = 32
     gmm_components: int = 1
     n_classes: int = 10
     model_type: ModelType = ModelType.scaling
@@ -53,7 +53,11 @@ class ArgsModel(BaseModel):
 
 
 def train_model(
-    model: DDPM, train_dataloader: DataLoader, args: ArgsModel, device: str
+    model: DDPM,
+    train_dataloader: DataLoader,
+    test_dataloader: DataLoader,
+    args: ArgsModel,
+    device: str,
 ) -> None:
     optim = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -87,24 +91,32 @@ def train_model(
 
         total_time += end_time - start_time
 
-        samples = generate_samples(model, args, device, 2048)
-
-        save_images(
-            samples[: (5 * args.n_classes)], args.save_dir + f"image_ep{ep}.png"
+        visual_samples = 4 * args.n_classes
+        samples = generate_samples(
+            model, args, device, 512 if args.calculate_fid else visual_samples
         )
+        target = _get_target_samples(test_dataloader, samples.shape[0])
+
+        save_images(samples[:40], f"debug/samples.png")
+        save_images(target[:40], f"debug/target.png")
+
+        save_images(samples[:visual_samples], args.save_dir + f"image_ep{ep}.png")
 
         avg_loss = total_loss / len(train_dataloader)
         if args.calculate_fid:
             fid = calculate_fid(
                 samples,
+                target,
                 device=device,
-                batch_size=args.batch_size,
-                image_size=args.image_size,
             )
+            ssim = calculate_ssim(samples, target)
         else:
             fid = 0
+            ssim = 0
 
-        print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f}\n")
+        print(
+            f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f}\n"
+        )
 
         if args.log_wandb:
             log_wandb(ep, avg_loss, fid, total_time, args)
@@ -112,7 +124,14 @@ def train_model(
         if args.save_model and ep == int(args.epochs - 1):
             save_model(model, args.save_dir + "model.pth")
 
-    evaluate_model(model, args, device)
+    evaluate_model(model, args, test_dataloader, device)
+
+
+def _get_target_samples(dataloader: DataLoader, count: int):
+    real_x = [x for x, _ in dataloader]
+
+    real_x = torch.concatenate(real_x, axis=0)
+    return real_x[:count]
 
 
 def generate_samples(
@@ -150,6 +169,7 @@ def log_wandb(
 def evaluate_model(
     model: DDPM,
     args: ArgsModel,
+    test_dataloader: DataLoader,
     device: str,
 ):
     print("\nEvaluating model...")
@@ -157,14 +177,14 @@ def evaluate_model(
     start_time = time.time()
 
     samples = generate_samples(model, args, device, 10000)
+    target = _get_target_samples(test_dataloader, samples.shape[0])
 
     sampling_time = time.time() - start_time
 
     final_fid = calculate_fid(
         samples,
+        target,
         device=device,
-        batch_size=args.batch_size,
-        image_size=args.image_size,
     )
 
     print(f"Final FID: {final_fid:.4f}")
@@ -251,7 +271,7 @@ def main():
         )
     model.to(device)
 
-    train_model(model, train_dataloader, args, device)
+    train_model(model, train_dataloader, test_dataloader, args, device)
 
 
 if __name__ == "__main__":
