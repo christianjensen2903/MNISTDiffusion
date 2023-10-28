@@ -17,8 +17,8 @@ def calculate_fid(pred, target, device):
     return fid_calculator.compute()
 
 
-def calculate_ssim(pred, target):
+def calculate_ssim(pred, target, device):
     print("Calculating ssim...")
-    ssim_calculator = StructuralSimilarityIndexMeasure()
+    ssim_calculator = StructuralSimilarityIndexMeasure().to(device)
     ssim_calculator.update(pred, target)
     return ssim_calculator.compute()

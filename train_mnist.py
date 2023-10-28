@@ -98,7 +98,7 @@ def train_model(
         samples = generate_samples(
             model, args, device, 512 if args.calculate_metrics else visual_samples
         )
-        target = _get_target_samples(test_dataloader, samples.shape[0])
+        target = _get_target_samples(test_dataloader, samples.shape[0]).to(device)
 
         save_images(samples[:40], f"debug/samples.png")
         save_images(target[:40], f"debug/target.png")
@@ -112,7 +112,7 @@ def train_model(
                 target,
                 device=device,
             )
-            ssim = calculate_ssim(samples, target)
+            ssim = calculate_ssim(samples, target, device)
             print(
                 f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f}\n"
             )
@@ -143,9 +143,6 @@ def generate_samples(
     generated_samples = torch.tensor([])
     while len(generated_samples) < count:
         samples = model.sample(args.batch_size, (1, args.image_size, args.image_size))
-        if device == "cuda":
-            samples = samples.cuda().cpu()
-
         generated_samples = torch.cat((generated_samples, samples))
     generated_samples = generated_samples[:count]
     return generated_samples
@@ -180,7 +177,7 @@ def evaluate_model(
     start_time = time.time()
 
     samples = generate_samples(model, args, device, 10000)
-    target = _get_target_samples(test_dataloader, samples.shape[0])
+    target = _get_target_samples(test_dataloader, samples.shape[0]).to(device)
 
     sampling_time = time.time() - start_time
 
@@ -190,7 +187,7 @@ def evaluate_model(
         device=device,
     )
 
-    final_ssim = calculate_ssim(samples, target)
+    final_ssim = calculate_ssim(samples, target, device)
 
     print(f"Final FID: {final_fid:.4f}")
     print(f"Final SSIM: {final_ssim:.4f}")
