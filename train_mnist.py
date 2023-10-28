@@ -39,7 +39,7 @@ class ArgsModel(BaseModel):
     n_classes: int = 10
     model_type: ModelType = ModelType.scaling
     log_wandb: bool = False
-    calculate_fid: bool = False
+    calculate_metrics: bool = False
     sweep_id: str = None
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
@@ -93,7 +93,7 @@ def train_model(
 
         visual_samples = 4 * args.n_classes
         samples = generate_samples(
-            model, args, device, 512 if args.calculate_fid else visual_samples
+            model, args, device, 512 if args.calculate_metrics else visual_samples
         )
         target = _get_target_samples(test_dataloader, samples.shape[0])
 
@@ -103,20 +103,20 @@ def train_model(
         save_images(samples[:visual_samples], args.save_dir + f"image_ep{ep}.png")
 
         avg_loss = total_loss / len(train_dataloader)
-        if args.calculate_fid:
+        if args.calculate_metrics:
             fid = calculate_fid(
                 samples,
                 target,
                 device=device,
             )
             ssim = calculate_ssim(samples, target)
+            print(
+                f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f}\n"
+            )
         else:
-            fid = 0
-            ssim = 0
-
-        print(
-            f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f}\n"
-        )
+            print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f}\n")
+            fid = None
+            ssim = None
 
         if args.log_wandb:
             log_wandb(ep, avg_loss, fid, total_time, args)
@@ -187,11 +187,20 @@ def evaluate_model(
         device=device,
     )
 
+    final_ssim = calculate_ssim(samples, target)
+
     print(f"Final FID: {final_fid:.4f}")
+    print(f"Final SSIM: {final_ssim:.4f}")
     print(f"Sampling time: {sampling_time:.4f}")
 
     if args.log_wandb:
-        wandb.log({"sampling_time": sampling_time, "final_fid": final_fid})
+        wandb.log(
+            {
+                "sampling_time": sampling_time,
+                "final_fid": final_fid,
+                "final_ssim": final_ssim,
+            }
+        )
 
 
 def initialize_wandb(args: ArgsModel) -> ArgsModel:
