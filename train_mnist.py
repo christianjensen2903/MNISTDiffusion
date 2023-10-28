@@ -45,6 +45,9 @@ class ArgsModel(BaseModel):
     save_dir = "./data/diffusion_outputs10/"
     models_dir = "./models/"
 
+    class Config:
+        use_enum_values = True
+
     @classmethod
     def from_wandb_config(cls, wandb_config: dict) -> "ArgsModel":
         # Update default values with those from wandb.config
