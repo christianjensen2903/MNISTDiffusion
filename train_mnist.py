@@ -39,7 +39,7 @@ class ArgsModel(BaseModel):
     n_classes: int = 10
     model_type: ModelType = ModelType.scaling
     log_wandb: bool = False
-    calculate_metrics: bool = False
+    calculate_metrics: bool = True
     sweep_id: str = None
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
@@ -96,9 +96,9 @@ def train_model(
 
         visual_samples = 4 * args.n_classes
         samples = generate_samples(
-            model, args, device, 512 if args.calculate_metrics else visual_samples
+            model, args, device, 500 if args.calculate_metrics else visual_samples
         )
-        target = _get_target_samples(test_dataloader, samples.shape[0]).to(device)
+        target = get_balanced_samples(test_dataloader, samples.shape[0]).to(device)
 
         save_images(samples[:40], f"debug/samples.png")
         save_images(target[:40], f"debug/target.png")
@@ -130,11 +130,31 @@ def train_model(
     evaluate_model(model, args, test_dataloader, device)
 
 
-def _get_target_samples(dataloader: DataLoader, count: int):
-    real_x = [x for x, _ in dataloader]
+def get_balanced_samples(dataloader: DataLoader, count: int):
+    # Assuming that the dataset is labeled with classes 0, 1, ..., n-1
+    # for a total of n classes
+    n_classes = len(dataloader.dataset.classes)
 
-    real_x = torch.concatenate(real_x, axis=0)
-    return real_x[:count]
+    # Determine how many samples per class we want
+    samples_per_class = count // n_classes
+
+    # Dict to track how many samples we've taken from each class
+    class_counts = {i: 0 for i in range(n_classes)}
+
+    balanced_samples = []
+
+    for x, y in dataloader:
+        for i in range(len(y)):
+            # Check if we've reached the desired number of samples for this class
+            if class_counts[y[i].item()] < samples_per_class:
+                balanced_samples.append(x[i])
+                class_counts[y[i].item()] += 1
+
+                # Check if we've reached the total count
+                if len(balanced_samples) == count:
+                    return torch.stack(balanced_samples)
+
+    return torch.stack(balanced_samples)
 
 
 def generate_samples(
@@ -176,8 +196,8 @@ def evaluate_model(
 
     start_time = time.time()
 
-    samples = generate_samples(model, args, device, 10000)
-    target = _get_target_samples(test_dataloader, samples.shape[0]).to(device)
+    samples = generate_samples(model, args, device, 2000)
+    target = get_balanced_samples(test_dataloader, samples.shape[0]).to(device)
 
     sampling_time = time.time() - start_time
 
