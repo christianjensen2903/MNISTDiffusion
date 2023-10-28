@@ -33,6 +33,11 @@ class GeometricScheduler(LevelScheduler):
         return [p / sum(prob_dist) for p in prob_dist]
 
 
+class UniformScheduler(LevelScheduler):
+    def get_probabilities(self, number_of_levels):
+        return [1 / number_of_levels for _ in range(number_of_levels)]
+
+
 class ScalingDDPM(DDPM):
     def __init__(
         self,

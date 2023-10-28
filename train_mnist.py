@@ -1,7 +1,14 @@
 import torch
 from noise_ddpm import NoiseDDPM
 from cold_ddpm import ColdDDPM
-from scaling_ddpm import ScalingDDPM
+from scaling_ddpm import (
+    ScalingDDPM,
+    PowerScheduler,
+    LevelScheduler,
+    ArithmeticScheduler,
+    GeometricScheduler,
+    UniformScheduler,
+)
 from pixelate import Pixelate
 from initializers import RandomColorInitializer, GMMInitializer
 from ddpm import DDPM
@@ -38,6 +45,7 @@ class ArgsModel(BaseModel):
     gmm_components: int = 1
     n_classes: int = 10
     model_type: ModelType = ModelType.scaling
+    level_scheduler: str = "power"
     log_wandb: bool = False
     calculate_metrics: bool = True
     sweep_id: str = None
@@ -283,6 +291,17 @@ def main():
             minimum_pixelation=args.minimum_pixelation,
         )
     elif args.model_type == ModelType.scaling:
+        if args.level_scheduler == "power":
+            level_scheduler = PowerScheduler()
+        elif args.level_scheduler == "arithmetic":
+            level_scheduler = ArithmeticScheduler()
+        elif args.level_scheduler == "geometric":
+            level_scheduler = GeometricScheduler()
+        elif args.level_scheduler == "uniform":
+            level_scheduler = UniformScheduler()
+        else:
+            raise ValueError("Invalid level scheduler")
+
         model = ScalingDDPM(
             unet=ContextUnet(
                 in_channels=1 + args.positional_degree * 4,
@@ -297,6 +316,7 @@ def main():
             initializer=initializer,
             minimum_pixelation=args.minimum_pixelation,
             positional_degree=args.positional_degree,
+            level_scheduler=level_scheduler,
         )
     model.to(device)
 
