@@ -128,6 +128,8 @@ class ScalingDDPM(DDPM):
 
                 x_0 = self.nn_model(x_t_pos, c_i, t_is / self.T)
 
+                x_0.clamp_(-1, 1)
+
                 if relative_t - 1 > 0:
                     x_t = self.degredation(x_0, (relative_t - 1))
                 else:

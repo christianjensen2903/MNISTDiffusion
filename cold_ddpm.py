@@ -93,6 +93,7 @@ class ColdDDPM(DDPM):
             t_is = t_is.repeat(n_sample)
 
             x_0 = self.nn_model(x_t, c_i, t_is)
+            x_0.clamp_(-1, 1)
 
             x_t = self.degredation(x_0, (t - 1))
 

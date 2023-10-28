@@ -33,7 +33,7 @@ class ModelType(str, Enum):
 class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 4
-    n_between: int = 1
+    n_between: int = 0
     minimum_pixelation: int = 4
     n_feat = 64
     epochs: int = 50
@@ -41,13 +41,13 @@ class ArgsModel(BaseModel):
     positional_degree: int = 6
     betas = (1e-4, 0.02)
     log_freq: int = 200
-    image_size: int = 32
+    image_size: int = 16
     gmm_components: int = 1
     n_classes: int = 10
     model_type: ModelType = ModelType.scaling
     level_scheduler: str = "power"
     log_wandb: bool = False
-    calculate_metrics: bool = True
+    calculate_metrics: bool = False
     sweep_id: str = None
     save_model = False
     save_dir = "./data/diffusion_outputs10/"

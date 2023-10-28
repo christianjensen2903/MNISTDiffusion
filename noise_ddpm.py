@@ -82,9 +82,9 @@ class NoiseDDPM(DDPM):
             z = torch.randn(n_sample, *size).to(self.device) if i > 1 else 0
 
             eps = self.nn_model(x_i, c_i, t_is)
-            x_i = (
-                self.oneover_sqrta[i] * (x_i - eps * self.mab_over_sqrtmab[i])
-                + self.sqrt_beta_t[i] * z
-            )
+            x_0 = x_i - eps * self.mab_over_sqrtmab[i]
+            x_0.clamp_(-1, 1)
+
+            x_i = self.oneover_sqrta[i] * x_0 + self.sqrt_beta_t[i] * z
 
         return x_i
