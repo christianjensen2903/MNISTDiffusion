@@ -140,7 +140,7 @@ def _get_target_samples(dataloader: DataLoader, count: int):
 def generate_samples(
     model: DDPM, args: ArgsModel, device: str, count: int
 ) -> torch.Tensor:
-    generated_samples = torch.tensor([])
+    generated_samples = torch.tensor([]).to(device)
     while len(generated_samples) < count:
         samples = model.sample(args.batch_size, (1, args.image_size, args.image_size))
         generated_samples = torch.cat((generated_samples, samples))
