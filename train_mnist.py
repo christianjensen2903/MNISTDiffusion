@@ -18,7 +18,7 @@ from data_loader import create_mnist_dataloaders
 import wandb
 from pydantic import BaseModel
 from tqdm import tqdm
-from utils import save_images, save_model, setup_device
+from utils import save_images, save_model, setup_device, ExponentialMovingAverage
 from enum import Enum
 from metrics import calculate_fid, calculate_ssim
 import time
@@ -44,6 +44,8 @@ class ArgsModel(BaseModel):
     image_size: int = 16
     gmm_components: int = 1
     n_classes: int = 10
+    model_ema_steps: int = 10
+    model_ema_decay: float = 0.995
     model_type: ModelType = ModelType.scaling
     level_scheduler: str = "power"
     log_wandb: bool = False
@@ -74,6 +76,12 @@ def train_model(
 
     total_time = 0
 
+    adjust = 1 * args.batch_size * args.model_ema_steps / args.epochs
+    alpha = 1.0 - args.model_ema_decay
+    alpha = min(1.0, alpha * adjust)
+    model_ema = ExponentialMovingAverage(model, device=device, decay=1.0 - alpha)
+
+    global_steps = 0
     for ep in range(args.epochs):
         start_time = time.time()
 
@@ -98,13 +106,22 @@ def train_model(
             pbar.set_description(f"loss: {loss.item():.4f}")
             optim.step()
 
+            if (global_steps % args.model_ema_steps) == 0:
+                model_ema.update_parameters(model)
+
+            global_steps += 1
+
         end_time = time.time()
 
         total_time += end_time - start_time
 
         visual_samples = 4 * args.n_classes
+
         samples = generate_samples(
-            model, args, device, 500 if args.calculate_metrics else visual_samples
+            model_ema.module,
+            args,
+            device,
+            500 if args.calculate_metrics else visual_samples,
         )
         target = get_balanced_samples(test_dataloader, samples.shape[0]).to(device)
 
