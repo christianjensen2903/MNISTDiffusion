@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from tqdm import tqdm
 from utils import save_images, save_model, setup_device, ExponentialMovingAverage
 from enum import Enum
-from metrics import calculate_fid, calculate_ssim
+from metrics import calculate_fid, calculate_ssim, calculate_cas
 import time
 
 
@@ -118,7 +118,7 @@ def train_model(
 
         visual_samples = 4 * args.n_classes
 
-        samples = generate_samples(
+        samples, labels = generate_samples(
             model_ema.module,
             args,
             device,
@@ -139,16 +139,23 @@ def train_model(
                 device=device,
             )
             ssim = calculate_ssim(samples, target, device)
+            cas = calculate_cas(
+                samples,
+                labels,
+                test_dataloader,
+                device,
+            )
             print(
-                f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f}\n"
+                f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f} | CAS: {cas:.4f}\n"
             )
         else:
             print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f}\n")
             fid = None
             ssim = None
+            cas = None
 
         if args.log_wandb:
-            log_wandb(ep, avg_loss, fid, total_time, args)
+            log_wandb(ep, avg_loss, fid, ssim, cas, total_time, args)
 
         if args.save_model and ep == int(args.epochs - 1):
             save_model(model, args.save_dir + "model.pth")
@@ -156,7 +163,7 @@ def train_model(
     evaluate_model(model, args, test_dataloader, device)
 
 
-def get_balanced_samples(dataloader: DataLoader, count: int):
+def get_balanced_samples(dataloader: DataLoader, count: int) -> torch.Tensor:
     # Assuming that the dataset is labeled with classes 0, 1, ..., n-1
     # for a total of n classes
     n_classes = len(dataloader.dataset.classes)
@@ -185,19 +192,31 @@ def get_balanced_samples(dataloader: DataLoader, count: int):
 
 def generate_samples(
     model: DDPM, args: ArgsModel, device: str, count: int
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, torch.Tensor]:
     generated_samples = torch.tensor([]).to(device)
+    generated_labels = torch.tensor([], dtype=torch.long).to(
+        device
+    )  # assuming labels are of type long
+
     while len(generated_samples) < count:
-        samples = model.sample(args.batch_size, (1, args.image_size, args.image_size))
+        samples, labels = model.sample(
+            args.batch_size, (1, args.image_size, args.image_size)
+        )
         generated_samples = torch.cat((generated_samples, samples))
+        generated_labels = torch.cat((generated_labels, labels))
+
     generated_samples = generated_samples[:count]
-    return generated_samples
+    generated_labels = generated_labels[:count]
+
+    return generated_samples, generated_labels
 
 
 def log_wandb(
     ep: int,
     train_loss: float,
     fid: float,
+    ssim: float,
+    cas: float,
     total_time: float,
     args: ArgsModel,
 ) -> None:
@@ -206,6 +225,8 @@ def log_wandb(
             "epoch": ep + 1,
             "train_loss": train_loss,
             "fid": fid,
+            "ssim": ssim,
+            "cas": cas,
             "total_time": total_time,
             f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
         }
@@ -222,7 +243,7 @@ def evaluate_model(
 
     start_time = time.time()
 
-    samples = generate_samples(model, args, device, 2000)
+    samples, labels = generate_samples(model, args, device, 2000)
     target = get_balanced_samples(test_dataloader, samples.shape[0]).to(device)
 
     sampling_time = time.time() - start_time
@@ -235,8 +256,16 @@ def evaluate_model(
 
     final_ssim = calculate_ssim(samples, target, device)
 
+    final_cas = calculate_cas(
+        samples,
+        labels,
+        test_dataloader,
+        device,
+    )
+
     print(f"Final FID: {final_fid:.4f}")
     print(f"Final SSIM: {final_ssim:.4f}")
+    print(f"Final CAS: {final_cas:.4f}")
     print(f"Sampling time: {sampling_time:.4f}")
 
     if args.log_wandb:
@@ -245,6 +274,7 @@ def evaluate_model(
                 "sampling_time": sampling_time,
                 "final_fid": final_fid,
                 "final_ssim": final_ssim,
+                "final_cas": final_cas,
             }
         )
 

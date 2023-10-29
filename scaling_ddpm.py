@@ -108,7 +108,9 @@ class ScalingDDPM(DDPM):
         return self.loss_mse(x, pred)
 
     @torch.no_grad()
-    def sample(self, n_sample, size):
+    def sample(
+        self, n_sample: int, size: tuple[int]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         c_i = self.get_ci(n_sample)
 
         # Sample x_t for classes
@@ -148,7 +150,7 @@ class ScalingDDPM(DDPM):
 
                 t -= 1
 
-        return x_0
+        return x_0, c_i
 
     def _add_positional_embedding(self, x):
         size = x.shape[-1]

@@ -87,4 +87,4 @@ class NoiseDDPM(DDPM):
 
             x_i = self.oneover_sqrta[i] * x_0 + self.sqrt_beta_t[i] * z
 
-        return x_i
+        return x_i, c_i

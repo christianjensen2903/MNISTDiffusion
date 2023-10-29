@@ -97,7 +97,7 @@ class ColdDDPM(DDPM):
 
             x_t = x_t - self.degredation(x_0, t) + self.degredation(x_0, (t - 1))
 
-        return x_0
+        return x_0, c_i
 
     def _sample_level(self, max_size, min_size):
         number_of_levels = int(math.log2(max_size) - math.log2(min_size)) + 1
