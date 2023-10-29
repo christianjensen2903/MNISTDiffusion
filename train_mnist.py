@@ -139,23 +139,16 @@ def train_model(
                 device=device,
             )
             ssim = calculate_ssim(samples, target, device)
-            cas = calculate_cas(
-                samples,
-                labels,
-                test_dataloader,
-                device,
-            )
             print(
-                f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f} | CAS: {cas:.4f}\n"
+                f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f}\n"
             )
         else:
             print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f}\n")
             fid = None
             ssim = None
-            cas = None
 
         if args.log_wandb:
-            log_wandb(ep, avg_loss, fid, ssim, cas, total_time, args)
+            log_wandb(ep, avg_loss, fid, ssim, total_time, args)
 
         if args.save_model and ep == int(args.epochs - 1):
             save_model(model, args.save_dir + "model.pth")
@@ -216,7 +209,6 @@ def log_wandb(
     train_loss: float,
     fid: float,
     ssim: float,
-    cas: float,
     total_time: float,
     args: ArgsModel,
 ) -> None:
@@ -226,7 +218,6 @@ def log_wandb(
             "train_loss": train_loss,
             "fid": fid,
             "ssim": ssim,
-            "cas": cas,
             "total_time": total_time,
             f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
         }
