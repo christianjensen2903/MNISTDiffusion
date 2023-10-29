@@ -53,7 +53,7 @@ class ColdDDPM(DDPM):
         self.nn_model = unet.to(device)
 
         self.device = device
-        self.loss_mse = nn.MSELoss()
+        self.loss_mse = nn.L1Loss()
         self.sample_initializer = initializer
         self.degredation = Pixelate(
             n_between=n_between,

@@ -34,7 +34,7 @@ class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 4
     n_between: int = 0
-    minimum_pixelation: int = 4
+    minimum_pixelation: int = 2
     n_feat = 64
     epochs: int = 50
     lr: float = 4e-4
@@ -42,11 +42,11 @@ class ArgsModel(BaseModel):
     betas = (1e-4, 0.02)
     log_freq: int = 200
     image_size: int = 16
-    gmm_components: int = 1
+    gmm_components: int = 10
     n_classes: int = 10
     model_ema_steps: int = 10
     model_ema_decay: float = 0.995
-    model_type: ModelType = ModelType.scaling
+    model_type: ModelType = ModelType.cold
     level_scheduler: str = "power"
     power: float = -0.4
     log_wandb: bool = False
