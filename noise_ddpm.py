@@ -65,7 +65,7 @@ class NoiseDDPM(DDPM):
         # We should predict the "error term" from this x_t. Loss is what we return.
 
         # return MSE between added noise, and our predicted noise
-        return self.loss_mse(noise, self.nn_model(x_t, c, _ts / self.T))
+        return self.loss_mse(noise, self.nn_model(x_t, _ts / self.T, c))
 
     @torch.no_grad()
     def sample(self, n_sample, size):
@@ -81,7 +81,7 @@ class NoiseDDPM(DDPM):
 
             z = torch.randn(n_sample, *size).to(self.device) if i > 1 else 0
 
-            eps = self.nn_model(x_i, c_i, t_is)
+            eps = self.nn_model(x_i, t_is, c_i)
             x_0 = x_i - eps * self.mab_over_sqrtmab[i]
             x_0.clamp_(-1, 1)
 

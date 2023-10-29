@@ -12,7 +12,7 @@ from scaling_ddpm import (
 from pixelate import Pixelate
 from initializers import RandomColorInitializer, GMMInitializer
 from ddpm import DDPM
-from unet import ContextUnet
+from unet import UNetModel
 from torch.utils.data import DataLoader
 from data_loader import create_mnist_dataloaders
 import wandb
@@ -34,14 +34,17 @@ class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 4
     n_between: int = 0
-    minimum_pixelation: int = 2
+    minimum_pixelation: int = 4
     n_feat = 64
+    num_res_blocks = 2
+    attention_resolutions = [16]
+    channel_mult = (1, 2, 4)
     epochs: int = 50
     lr: float = 4e-4
     positional_degree: int = 6
     betas = (1e-4, 0.02)
     log_freq: int = 200
-    image_size: int = 16
+    image_size: int = 32
     gmm_components: int = 10
     n_classes: int = 10
     model_ema_steps: int = 10
@@ -301,13 +304,20 @@ def main():
         args.image_size
     )
 
+    attention_ds = []
+    for res in args.attention_resolutions:
+        attention_ds.append(args.image_size // int(res))
+
     if args.model_type == ModelType.noise:
         model = NoiseDDPM(
-            unet=ContextUnet(
+            unet=UNetModel(
                 in_channels=1,
+                model_channels=args.n_feat,
                 out_channels=1,
-                n_feat=args.n_feat,
-                n_classes=args.n_classes,
+                num_res_blocks=args.num_res_blocks,
+                attention_resolutions=tuple(attention_ds),
+                num_classes=args.n_classes,
+                channel_mult=args.channel_mult,
             ),
             T=args.timesteps,
             device=device,
@@ -316,11 +326,14 @@ def main():
         )
     elif args.model_type == ModelType.cold:
         model = ColdDDPM(
-            unet=ContextUnet(
+            unet=UNetModel(
                 in_channels=1,
+                model_channels=args.n_feat,
                 out_channels=1,
-                n_feat=args.n_feat,
-                n_classes=args.n_classes,
+                num_res_blocks=args.num_res_blocks,
+                attention_resolutions=tuple(attention_ds),
+                num_classes=args.n_classes,
+                channel_mult=args.channel_mult,
             ),
             T=pixelate_T,
             device=device,
@@ -342,11 +355,14 @@ def main():
             raise ValueError("Invalid level scheduler")
 
         model = ScalingDDPM(
-            unet=ContextUnet(
+            unet=UNetModel(
                 in_channels=1 + args.positional_degree * 4,
+                model_channels=args.n_feat,
                 out_channels=1,
-                n_feat=args.n_feat,
-                n_classes=args.n_classes,
+                num_res_blocks=args.num_res_blocks,
+                attention_resolutions=tuple(attention_ds),
+                num_classes=args.n_classes,
+                channel_mult=args.channel_mult,
             ),
             T=pixelate_T,
             device=device,

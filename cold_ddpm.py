@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from unet import ContextUnet
+from unet import UNetModel
 from ddpm import DDPM
 from pixelate import Pixelate
 from initializers import SampleInitializer
@@ -35,7 +35,7 @@ class GeometricScheduler(LevelScheduler):
 class ColdDDPM(DDPM):
     def __init__(
         self,
-        unet: ContextUnet,
+        unet: UNetModel,
         T,
         device,
         n_classes,
@@ -76,7 +76,7 @@ class ColdDDPM(DDPM):
         ).unsqueeze(1)
 
         # return MSE between added noise, and our predicted noise
-        pred = self.nn_model(x_t, c, _ts / self.T)
+        pred = self.nn_model(x_t, _ts / self.T, c)
         return self.loss_mse(x, pred)
 
     @torch.no_grad()
@@ -92,7 +92,7 @@ class ColdDDPM(DDPM):
             t_is = torch.tensor([t / self.T]).to(self.device)
             t_is = t_is.repeat(n_sample)
 
-            x_0 = self.nn_model(x_t, c_i, t_is)
+            x_0 = self.nn_model(x_t, t_is, c_i)
             x_0.clamp_(-1, 1)
 
             x_t = x_t - self.degredation(x_0, t) + self.degredation(x_0, (t - 1))

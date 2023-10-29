@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from unet import ContextUnet
+from unet import UNetModel
 from ddpm import DDPM
 import numpy as np
 import torch.nn.functional as F
@@ -47,7 +47,7 @@ class UniformScheduler(LevelScheduler):
 class ScalingDDPM(DDPM):
     def __init__(
         self,
-        unet: ContextUnet,
+        unet: UNetModel,
         T,
         device,
         n_classes,
@@ -102,7 +102,7 @@ class ScalingDDPM(DDPM):
 
         # return MSE between added noise, and our predicted noise
         pred = self.nn_model(
-            x_t_pos, c, ((self.n_between + 1) * current_level + _ts) / self.T
+            x_t_pos, ((self.n_between + 1) * current_level + _ts) / self.T, c
         )
 
         return self.loss_mse(x, pred)
@@ -134,7 +134,7 @@ class ScalingDDPM(DDPM):
 
                 x_t_pos = self._add_positional_embedding(x_t)
 
-                x_0 = self.nn_model(x_t_pos, c_i, t_is / self.T)
+                x_0 = self.nn_model(x_t_pos, t_is / self.T, c_i)
 
                 x_0.clamp_(-1, 1)
 
