@@ -22,14 +22,20 @@ class ArithmeticScheduler(LevelScheduler):
 
 
 class PowerScheduler(LevelScheduler):
-    def get_probabilities(self, number_of_levels, power=0.4):
-        prob_dist = [i**power for i in range(1, number_of_levels + 1)]
+    def __init__(self, power=2):
+        self.power = power
+
+    def get_probabilities(self, number_of_levels):
+        prob_dist = [i**self.power for i in range(1, number_of_levels + 1)]
         return [p / sum(prob_dist) for p in prob_dist]
 
 
 class GeometricScheduler(LevelScheduler):
-    def get_probabilities(self, number_of_levels, base=1.5):
-        prob_dist = [base**i for i in range(number_of_levels)]
+    def __init__(self, base=2):
+        self.base = base
+
+    def get_probabilities(self, number_of_levels):
+        prob_dist = [self.base**i for i in range(number_of_levels)]
         return [p / sum(prob_dist) for p in prob_dist]
 
 
@@ -130,9 +136,13 @@ class ScalingDDPM(DDPM):
 
                 x_0.clamp_(-1, 1)
 
-                if relative_t - 1 > 0:
-                    x_t = self.degredation(x_0, (relative_t - 1))
-                else:
+                x_t = (
+                    x_t
+                    - self.degredation(x_0, (relative_t))
+                    + self.degredation(x_0, (relative_t - 1))
+                )
+
+                if relative_t - 1 == 0:
                     current_size *= 2
                     x_t = scale_images(x_0, current_size)
 

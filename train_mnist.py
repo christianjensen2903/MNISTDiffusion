@@ -48,6 +48,7 @@ class ArgsModel(BaseModel):
     model_ema_decay: float = 0.995
     model_type: ModelType = ModelType.scaling
     level_scheduler: str = "power"
+    power: float = -0.4
     log_wandb: bool = False
     calculate_metrics: bool = False
     sweep_id: str = None
@@ -309,7 +310,7 @@ def main():
         )
     elif args.model_type == ModelType.scaling:
         if args.level_scheduler == "power":
-            level_scheduler = PowerScheduler()
+            level_scheduler = PowerScheduler(power=args.power)
         elif args.level_scheduler == "arithmetic":
             level_scheduler = ArithmeticScheduler()
         elif args.level_scheduler == "geometric":
