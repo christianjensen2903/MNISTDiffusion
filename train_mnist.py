@@ -51,6 +51,7 @@ class ArgsModel(BaseModel):
     minimum_pixelation: int = 4
     n_feat = 64
     num_res_blocks = 2
+    num_heads = 4
     attention_resolutions = [16]
     channel_mult = (1, 2, 4)
     epochs: int = 50
@@ -352,6 +353,7 @@ def main():
                 num_classes=args.n_classes,
                 channel_mult=args.channel_mult,
                 dropout=args.dropout,
+                num_heads=args.num_heads,
             ),
             T=args.timesteps,
             device=device,
@@ -370,6 +372,7 @@ def main():
                 num_classes=args.n_classes,
                 channel_mult=args.channel_mult,
                 dropout=args.dropout,
+                num_heads=args.num_heads,
             ),
             T=pixelate_T,
             device=device,
@@ -401,6 +404,7 @@ def main():
                 num_classes=args.n_classes,
                 channel_mult=args.channel_mult,
                 dropout=args.dropout,
+                num_heads=args.num_heads,
             ),
             T=pixelate_T,
             device=device,
