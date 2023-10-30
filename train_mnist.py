@@ -353,6 +353,7 @@ def main():
             ),
             T=args.timesteps,
             device=device,
+            criterion=criterion,
             n_classes=args.n_classes,
             betas=args.betas,
         )
@@ -369,6 +370,7 @@ def main():
             ),
             T=pixelate_T,
             device=device,
+            criterion=criterion,
             n_classes=args.n_classes,
             n_between=args.n_between,
             initializer=initializer,
@@ -399,6 +401,7 @@ def main():
             T=pixelate_T,
             device=device,
             n_classes=args.n_classes,
+            criterion=criterion,
             n_between=args.n_between,
             initializer=initializer,
             minimum_pixelation=args.minimum_pixelation,
