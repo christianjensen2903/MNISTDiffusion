@@ -47,18 +47,17 @@ class ArgsModel(BaseModel):
     n_feat = 64
     num_res_blocks = 2
     attention_resolutions = [16]
-    channel_mult = (1, 2, 4)
-    epochs: int = 50
+    channel_mult = (1, 2, 2, 2)
+    n_steps: int = 20000
     lr: float = 4e-4
     positional_degree: int = 6
     betas = (1e-4, 0.02)
-    log_freq: int = 200
+    log_freq: int = 10
     image_size: int = 16
     gmm_components: int = 1
     n_classes: int = 10
-    model_ema_steps: int = 10
-    model_ema_decay: float = 0.995
-    model_type: ModelType = ModelType.noise
+    model_ema_decay: float = 0.9999
+    model_type: ModelType = ModelType.scaling
     dataset: Dataset = Dataset.mnist
     level_scheduler: str = "power"
     power: float = -0.4
@@ -90,81 +89,78 @@ def train_model(
 
     total_time = 0
 
-    adjust = 1 * args.batch_size * args.model_ema_steps / args.epochs
-    alpha = 1.0 - args.model_ema_decay
-    alpha = min(1.0, alpha * adjust)
-    model_ema = ExponentialMovingAverage(model, device=device, decay=1.0 - alpha)
+    model_ema = ExponentialMovingAverage(
+        model, device=device, decay=args.model_ema_decay
+    )
 
-    global_steps = 0
-    for ep in range(args.epochs):
+    train_iterator = iter(train_dataloader)
+
+    total_loss = 0
+    for step in tqdm(range(args.n_steps)):
         start_time = time.time()
-
-        print(f"epoch {ep}")
         model.train()
 
-        # linear lrate decay
-        optim.param_groups[0]["lr"] = args.lr * (1 - ep / args.epochs)
+        try:
+            x, c = next(train_iterator)
+        except StopIteration:
+            # Reinitialize the iterator if the dataloader ends
+            train_iterator = iter(train_dataloader)
+            x, c = next(train_iterator)
 
-        pbar = tqdm(train_dataloader)
-        total_loss = 0
+        optim.zero_grad()
+        x, c = x.to(device), c.to(device)
 
-        for x, c in pbar:
-            optim.zero_grad()
-            x, c = x.to(device), c.to(device)
+        loss = model(x, c)
+        loss.backward()
 
-            loss = model(x, c)
-            loss.backward()
+        total_loss += loss.item()
 
-            total_loss += loss.item()
+        optim.step()
 
-            pbar.set_description(f"loss: {loss.item():.4f}")
-            optim.step()
-
-            if (global_steps % args.model_ema_steps) == 0:
-                model_ema.update_parameters(model)
-
-            global_steps += 1
+        model_ema.update_parameters(model)
 
         end_time = time.time()
 
         total_time += end_time - start_time
 
-        visual_samples = 4 * args.n_classes
+        if (step + 1) % args.log_freq == 0:
+            visual_samples = 4 * args.n_classes
 
-        samples, labels = generate_samples(
-            model_ema.module,
-            args,
-            device,
-            500 if args.calculate_metrics else visual_samples,
-        )
-        target = get_balanced_samples(test_dataloader, samples.shape[0]).to(device)
-
-        save_images(samples[:40], f"debug/samples.png")
-        save_images(target[:40], f"debug/target.png")
-
-        save_images(samples[:visual_samples], args.save_dir + f"image_ep{ep}.png")
-
-        avg_loss = total_loss / len(train_dataloader)
-        if args.calculate_metrics:
-            fid = calculate_fid(
-                samples,
-                target,
-                device=device,
+            samples, _ = generate_samples(
+                model_ema.module,
+                args,
+                device,
+                500 if args.calculate_metrics else visual_samples,
             )
-            ssim = calculate_ssim(samples, target, device)
-            print(
-                f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f}\n"
-            )
-        else:
-            print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f}\n")
-            fid = None
-            ssim = None
+            target = get_balanced_samples(test_dataloader, samples.shape[0]).to(device)
 
-        if args.log_wandb:
-            log_wandb(ep, avg_loss, fid, ssim, total_time, args)
+            save_images(samples[:40], f"debug/samples.png")
+            save_images(target[:40], f"debug/target.png")
 
-        if args.save_model and ep == int(args.epochs - 1):
-            save_model(model, args.save_dir + "model.pth")
+            save_images(samples[:visual_samples], args.save_dir + f"image_{step}.png")
+
+            avg_loss = total_loss / len(train_dataloader)
+            total_loss = 0
+            if args.calculate_metrics:
+                fid = calculate_fid(
+                    samples,
+                    target,
+                    device=device,
+                )
+                ssim = calculate_ssim(samples, target, device)
+                print(
+                    f"STEP {step + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f}\n"
+                )
+            else:
+                print(f"STEP {step + 1} | LOSS: {avg_loss:.4f}\n")
+                fid = None
+                ssim = None
+
+            if args.log_wandb:
+                log_wandb(step, avg_loss, fid, ssim, total_time, args)
+
+            if args.save_model:
+                save_model(model, args.save_dir + "model.pth")
 
     evaluate_model(model, args, test_dataloader, device)
 
@@ -218,7 +214,7 @@ def generate_samples(
 
 
 def log_wandb(
-    ep: int,
+    step: int,
     train_loss: float,
     fid: float,
     ssim: float,
@@ -227,12 +223,12 @@ def log_wandb(
 ) -> None:
     wandb.log(
         {
-            "epoch": ep + 1,
+            "step": step + 1,
             "train_loss": train_loss,
             "fid": fid,
             "ssim": ssim,
             "total_time": total_time,
-            f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
+            f"sample": wandb.Image(args.save_dir + f"image_{step}.png"),
         }
     )
 
