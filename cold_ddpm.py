@@ -71,9 +71,8 @@ class ColdDDPM(DDPM):
 
         _ts = torch.randint(1, self.T + 1, (x.shape[0],)).to(self.device)
 
-        x_t = torch.cat(
-            [self.degredation(x, t) for x, t in zip(x, _ts)], dim=0
-        ).unsqueeze(1)
+        x_t_list = [self.degredation(x[i], _ts[i]) for i in range(x.shape[0])]
+        x_t = torch.stack(x_t_list, dim=0)
 
         # return MSE between added noise, and our predicted noise
         pred = self.nn_model(x_t, _ts / self.T, c)

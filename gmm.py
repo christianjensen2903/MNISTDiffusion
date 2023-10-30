@@ -1,6 +1,5 @@
 import torch.nn.functional as F
 from sklearn.mixture import GaussianMixture
-from data_loader import create_mnist_dataloaders
 import numpy as np
 import joblib
 from collections import defaultdict
@@ -8,18 +7,14 @@ import matplotlib.pyplot as plt
 from utils import scale_images
 import os
 import torch
+from torch.utils.data import DataLoader
 
 
-def train_gmm_on_pixelated_mnist(
-    image_size=28, to_size=4, n_components=10, batch_size=64
-):
-    # Create dataloaders
-    train_dataloader, _ = create_mnist_dataloaders(batch_size, image_size=image_size)
-
+def train_gmm(dataloader: DataLoader, to_size=4, n_components=10):
     # Dictionary to store pixelated images for each class
     pixelated_images_per_class = defaultdict(list)
 
-    for images, labels in train_dataloader:
+    for images, labels in dataloader:
         for image, label in zip(images, labels):
             image = scale_images(image.unsqueeze(0), to_size=to_size)
             pixelated_images_per_class[int(label)].append(image.view(-1).numpy())
@@ -53,13 +48,14 @@ def load_gmm_model(filename="gmm_model.pkl"):
 
 
 def load_if_exists(
-    path="gmm_model.pkl", image_size: int = 28, to_size=4, n_components=10
+    dataloader: DataLoader,
+    path="gmm_model.pkl",
+    to_size=4,
+    n_components=10,
 ):
     # If the GMM model is not trained, train it
     if not os.path.exists(path):
-        gmms = train_gmm_on_pixelated_mnist(
-            image_size=image_size, n_components=n_components, to_size=to_size
-        )
+        gmms = train_gmm(dataloader, n_components=n_components, to_size=to_size)
         save_gmm_model(gmms, path)
     else:
         gmms = load_gmm_model(path)
@@ -107,7 +103,7 @@ def display_samples(samples):
 
 def main():
     path = "models/gmm_model.pkl"
-    gmms = train_gmm_on_pixelated_mnist(image_size=16, to_size=2, n_components=1)
+    gmms = train_gmm(image_size=16, to_size=2, n_components=1)
     save_gmm_model(gmms, path)
     gmms = load_gmm_model(path)
 

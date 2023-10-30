@@ -1,6 +1,5 @@
 .vscode
 data
-mnist_data
 assets
 *.pyc
 wandb

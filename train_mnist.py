@@ -4,17 +4,20 @@ from cold_ddpm import ColdDDPM
 from scaling_ddpm import (
     ScalingDDPM,
     PowerScheduler,
-    LevelScheduler,
     ArithmeticScheduler,
     GeometricScheduler,
     UniformScheduler,
 )
 from pixelate import Pixelate
-from initializers import RandomColorInitializer, GMMInitializer
+from initializers import GMMInitializer
 from ddpm import DDPM
 from unet import UNetModel
 from torch.utils.data import DataLoader
-from data_loader import create_mnist_dataloaders
+from data_loader import (
+    create_mnist_dataloaders,
+    create_cifar_dataloaders,
+    create_celeba_dataloaders,
+)
 import wandb
 from pydantic import BaseModel
 from tqdm import tqdm
@@ -28,6 +31,12 @@ class ModelType(str, Enum):
     cold = "cold"
     noise = "noise"
     scaling = "scaling"
+
+
+class Dataset(str, Enum):
+    mnist = "mnist"
+    cifar = "cifar"
+    celeba = "celeba"
 
 
 class ArgsModel(BaseModel):
@@ -44,12 +53,13 @@ class ArgsModel(BaseModel):
     positional_degree: int = 6
     betas = (1e-4, 0.02)
     log_freq: int = 200
-    image_size: int = 32
-    gmm_components: int = 10
+    image_size: int = 16
+    gmm_components: int = 1
     n_classes: int = 10
     model_ema_steps: int = 10
     model_ema_decay: float = 0.995
-    model_type: ModelType = ModelType.cold
+    model_type: ModelType = ModelType.scaling
+    dataset: Dataset = Dataset.cifar
     level_scheduler: str = "power"
     power: float = -0.4
     log_wandb: bool = False
@@ -290,14 +300,25 @@ def main():
 
     device = setup_device()
 
-    train_dataloader, test_dataloader = create_mnist_dataloaders(
-        batch_size=args.batch_size, image_size=args.image_size
-    )
+    if args.dataset == Dataset.mnist:
+        train_dataloader, test_dataloader = create_mnist_dataloaders(
+            batch_size=args.batch_size, image_size=args.image_size
+        )
+        channels = 1
+    elif args.dataset == Dataset.cifar:
+        train_dataloader, test_dataloader = create_cifar_dataloaders(
+            batch_size=args.batch_size, image_size=args.image_size
+        )
+        channels = 3
+    elif args.dataset == Dataset.celeba:
+        train_dataloader, test_dataloader = create_celeba_dataloaders(
+            batch_size=args.batch_size, image_size=args.image_size
+        )
+        channels = 3
 
     initializer = GMMInitializer(
-        image_size=args.image_size,
+        train_dataloader,
         to_size=args.minimum_pixelation,
-        path=f"models/gmm_{args.minimum_pixelation}_{args.gmm_components}.pkl",
         n_components=args.gmm_components,
     )
     pixelate_T = Pixelate(args.n_between, args.minimum_pixelation).calculate_T(
@@ -311,9 +332,9 @@ def main():
     if args.model_type == ModelType.noise:
         model = NoiseDDPM(
             unet=UNetModel(
-                in_channels=1,
+                in_channels=channels,
                 model_channels=args.n_feat,
-                out_channels=1,
+                out_channels=channels,
                 num_res_blocks=args.num_res_blocks,
                 attention_resolutions=tuple(attention_ds),
                 num_classes=args.n_classes,
@@ -327,9 +348,9 @@ def main():
     elif args.model_type == ModelType.cold:
         model = ColdDDPM(
             unet=UNetModel(
-                in_channels=1,
+                in_channels=channels,
                 model_channels=args.n_feat,
-                out_channels=1,
+                out_channels=channels,
                 num_res_blocks=args.num_res_blocks,
                 attention_resolutions=tuple(attention_ds),
                 num_classes=args.n_classes,
@@ -356,9 +377,9 @@ def main():
 
         model = ScalingDDPM(
             unet=UNetModel(
-                in_channels=1 + args.positional_degree * 4,
+                in_channels=channels + args.positional_degree * 4,
                 model_channels=args.n_feat,
-                out_channels=1,
+                out_channels=channels,
                 num_res_blocks=args.num_res_blocks,
                 attention_resolutions=tuple(attention_ds),
                 num_classes=args.n_classes,

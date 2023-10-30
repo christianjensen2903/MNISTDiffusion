@@ -1,7 +1,8 @@
 import torch
 from abc import ABC, abstractmethod
-from gmm import sample_from_gmm_for_class, load_if_exists
+from gmm import sample_from_gmm_for_class, train_gmm
 from utils import scale_images
+from torch.utils.data import DataLoader
 
 
 class SampleInitializer(ABC):
@@ -20,14 +21,11 @@ class RandomColorInitializer(SampleInitializer):
 class GMMInitializer(SampleInitializer):
     def __init__(
         self,
-        path: str = "gmm_model.pkl",
-        image_size: int = 28,
-        to_size=4,
-        n_components=10,
+        dataloader: DataLoader,
+        to_size: int,
+        n_components: int,
     ):
-        self.gmms = load_if_exists(
-            path, image_size, to_size=to_size, n_components=n_components
-        )
+        self.gmms = train_gmm(dataloader, n_components=n_components, to_size=to_size)
 
     def sample(self, size, label):
         n_sample = size[0]

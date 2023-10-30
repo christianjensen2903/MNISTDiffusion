@@ -94,9 +94,8 @@ class ScalingDDPM(DDPM):
 
         _ts = torch.randint(1, self.n_between + 2, (x.shape[0],)).to(self.device)
 
-        x_t = torch.cat(
-            [self.degredation(x, t) for x, t in zip(x, _ts)], dim=0
-        ).unsqueeze(1)
+        x_t_list = [self.degredation(x[i], _ts[i]) for i in range(x.shape[0])]
+        x_t = torch.stack(x_t_list, dim=0)
 
         x_t_pos = self._add_positional_embedding(x_t)
 
