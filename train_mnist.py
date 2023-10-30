@@ -59,6 +59,7 @@ class ArgsModel(BaseModel):
     betas = (1e-4, 0.02)
     log_freq: int = 200
     image_size: int = 16
+    dropout: float = 0.0
     gmm_components: int = 1
     n_classes: int = 10
     model_ema_steps: int = 10
@@ -350,6 +351,7 @@ def main():
                 attention_resolutions=tuple(attention_ds),
                 num_classes=args.n_classes,
                 channel_mult=args.channel_mult,
+                dropout=args.dropout,
             ),
             T=args.timesteps,
             device=device,
@@ -367,6 +369,7 @@ def main():
                 attention_resolutions=tuple(attention_ds),
                 num_classes=args.n_classes,
                 channel_mult=args.channel_mult,
+                dropout=args.dropout,
             ),
             T=pixelate_T,
             device=device,
@@ -397,6 +400,7 @@ def main():
                 attention_resolutions=tuple(attention_ds),
                 num_classes=args.n_classes,
                 channel_mult=args.channel_mult,
+                dropout=args.dropout,
             ),
             T=pixelate_T,
             device=device,
