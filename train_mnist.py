@@ -52,12 +52,12 @@ class ArgsModel(BaseModel):
     lr: float = 4e-4
     positional_degree: int = 6
     betas = (1e-4, 0.02)
-    log_freq: int = 10
+    log_freq: int = 1
     image_size: int = 16
     gmm_components: int = 1
     n_classes: int = 10
     model_ema_decay: float = 0.9999
-    model_type: ModelType = ModelType.scaling
+    model_type: ModelType = ModelType.noise
     dataset: Dataset = Dataset.mnist
     level_scheduler: str = "power"
     power: float = -0.4
