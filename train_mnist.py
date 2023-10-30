@@ -56,8 +56,7 @@ class ArgsModel(BaseModel):
     image_size: int = 16
     gmm_components: int = 1
     n_classes: int = 10
-    model_ema_steps: int = 10
-    model_ema_decay: float = 0.995
+    model_ema_decay: float = 0.9999
     model_type: ModelType = ModelType.noise
     dataset: Dataset = Dataset.mnist
     level_scheduler: str = "power"
@@ -90,12 +89,10 @@ def train_model(
 
     total_time = 0
 
-    adjust = 1 * args.batch_size * args.model_ema_steps / args.epochs
-    alpha = 1.0 - args.model_ema_decay
-    alpha = min(1.0, alpha * adjust)
-    model_ema = ExponentialMovingAverage(model, device=device, decay=1.0 - alpha)
+    model_ema = ExponentialMovingAverage(
+        model, device=device, decay=args.model_ema_decay
+    )
 
-    global_steps = 0
     for ep in range(args.epochs):
         start_time = time.time()
 
@@ -120,10 +117,7 @@ def train_model(
             pbar.set_description(f"loss: {loss.item():.4f}")
             optim.step()
 
-            if (global_steps % args.model_ema_steps) == 0:
-                model_ema.update_parameters(model)
-
-            global_steps += 1
+            model_ema.update_parameters(model)
 
         end_time = time.time()
 
