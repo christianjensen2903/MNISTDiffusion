@@ -41,7 +41,7 @@ class Dataset(str, Enum):
 
 class ArgsModel(BaseModel):
     batch_size: int = 64
-    timesteps: int = 4
+    timesteps: int = 1000
     n_between: int = 0
     minimum_pixelation: int = 4
     n_feat = 64
@@ -58,8 +58,8 @@ class ArgsModel(BaseModel):
     n_classes: int = 10
     model_ema_steps: int = 10
     model_ema_decay: float = 0.995
-    model_type: ModelType = ModelType.scaling
-    dataset: Dataset = Dataset.cifar
+    model_type: ModelType = ModelType.noise
+    dataset: Dataset = Dataset.mnist
     level_scheduler: str = "power"
     power: float = -0.4
     log_wandb: bool = False

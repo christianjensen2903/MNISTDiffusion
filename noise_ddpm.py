@@ -76,9 +76,7 @@ class NoiseDDPM(DDPM):
         c_i = self.get_ci(n_sample)
 
         for i in range(self.T, 0, -1):
-            t_is = torch.tensor([i / self.T]).to(self.device)
-            t_is = t_is.repeat(n_sample, 1, 1, 1)
-
+            t_is = torch.tensor([i / self.T]).repeat(n_sample).to(self.device)
             z = torch.randn(n_sample, *size).to(self.device) if i > 1 else 0
 
             eps = self.nn_model(x_i, t_is, c_i)
