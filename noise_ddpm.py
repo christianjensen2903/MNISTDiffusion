@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from ddpm import DDPM
-import random
 
 
 def ddpm_schedules(beta1, beta2, T):
@@ -34,7 +33,7 @@ def ddpm_schedules(beta1, beta2, T):
 
 
 class NoiseDDPM(DDPM):
-    def __init__(self, unet, T, device, n_classes, betas, eta=0, sampling_steps=100):
+    def __init__(self, unet, T, device, n_classes, betas):
         super(NoiseDDPM, self).__init__(
             unet=unet, T=T, device=device, n_classes=n_classes
         )
@@ -47,8 +46,6 @@ class NoiseDDPM(DDPM):
 
         self.T = T
         self.device = device
-        self.sampling_steps = sampling_steps
-        self.eta = eta
         self.loss_mse = nn.MSELoss()
 
     def forward(self, x, c):
@@ -78,19 +75,9 @@ class NoiseDDPM(DDPM):
 
         c_i = self.get_ci(n_sample)
 
-        c = self.T // self.sampling_steps
-
-        # sample timestemps
-        timesteps = [random.randint(1, self.T) for _ in range(c - 2)]
-        timesteps.append(self.T)
-        timesteps.append(1)
-        timesteps.sort(reverse=True)
-
-        for i in range(c):
-            t = timesteps[i]
-            t_i_minus_1 = timesteps[i + 1] if i + 1 < c else 1
-            t_is = torch.tensor([t / self.T]).repeat(n_sample).to(self.device)
-            z = torch.randn(n_sample, *size).to(self.device) if t > 1 else 0
+        for i in range(self.T, 0, -1):
+            t_is = torch.tensor([i / self.T]).repeat(n_sample).to(self.device)
+            z = torch.randn(n_sample, *size).to(self.device) if i > 1 else 0
 
             eps = self.nn_model(x_i, t_is, c_i)
             # x_0 = x_i - eps * self.mab_over_sqrtmab[i]
@@ -98,18 +85,18 @@ class NoiseDDPM(DDPM):
 
             # x_i = self.oneover_sqrta[i] * x_0 + self.sqrt_beta_t[i] * z
 
-            x0_t = (x_i - eps * (1 - self.alphabar_t[t]).sqrt()) / self.alphabar_t[
-                t
+            x0_t = (x_i - eps * (1 - self.alphabar_t[i]).sqrt()) / self.alphabar_t[
+                i
             ].sqrt()
             c1 = (
                 self.eta
                 * (
-                    (1 - self.alphabar_t[t] / self.alphabar_t[t_i_minus_1])
-                    * (1 - self.alphabar_t[t_i_minus_1])
-                    / (1 - self.alphabar_t[t])
+                    (1 - self.alphabar_t[i] / self.alphabar_t[i - 1])
+                    * (1 - self.alphabar_t[i - 1])
+                    / (1 - self.alphabar_t[i])
                 ).sqrt()
             )
-            c2 = ((1 - self.alphabar_t[t_i_minus_1]) - c1**2).sqrt()
-            x_i = self.alphabar_t[t_i_minus_1].sqrt() * x0_t + c1 * z + c2 * eps
+            c2 = ((1 - self.alphabar_t[i - 1]) - c1**2).sqrt()
+            x_i = self.alphabar_t[i - 1].sqrt() * x0_t + c1 * z + c2 * eps
 
         return x_i, c_i
