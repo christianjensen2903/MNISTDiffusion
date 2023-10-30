@@ -39,6 +39,11 @@ class Dataset(str, Enum):
     celeba = "celeba"
 
 
+class LossType(str, Enum):
+    l1 = "l1"
+    l2 = "l2"
+
+
 class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 1000
@@ -59,6 +64,7 @@ class ArgsModel(BaseModel):
     model_ema_steps: int = 10
     model_ema_decay: float = 0.995
     model_type: ModelType = ModelType.noise
+    loss_type: LossType = LossType.l1
     dataset: Dataset = Dataset.mnist
     level_scheduler: str = "power"
     power: float = -0.4
@@ -315,6 +321,11 @@ def main():
             batch_size=args.batch_size, image_size=args.image_size
         )
         channels = 3
+
+    if args.loss_type == LossType.l1:
+        criterion = torch.nn.L1Loss()
+    elif args.loss_type == LossType.l2:
+        criterion = torch.nn.MSELoss()
 
     initializer = GMMInitializer(
         train_dataloader,

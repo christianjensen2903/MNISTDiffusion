@@ -51,6 +51,7 @@ class ScalingDDPM(DDPM):
         T,
         device,
         n_classes,
+        criterion,
         n_between: int,
         initializer: SampleInitializer,
         minimum_pixelation: int,
@@ -62,6 +63,7 @@ class ScalingDDPM(DDPM):
             T=T,
             device=device,
             n_classes=n_classes,
+            criterion=criterion,
         )
         self.nn_model = unet.to(device)
 
@@ -104,7 +106,7 @@ class ScalingDDPM(DDPM):
             x_t_pos, ((self.n_between + 1) * current_level + _ts) / self.T, c
         )
 
-        return self.loss_mse(x, pred)
+        return self.criterion(x, pred)
 
     @torch.no_grad()
     def sample(

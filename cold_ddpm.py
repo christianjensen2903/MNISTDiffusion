@@ -39,6 +39,7 @@ class ColdDDPM(DDPM):
         T,
         device,
         n_classes,
+        criterion,
         n_between: int,
         initializer: SampleInitializer,
         minimum_pixelation: int,
@@ -49,6 +50,7 @@ class ColdDDPM(DDPM):
             T=T,
             device=device,
             n_classes=n_classes,
+            criterion=criterion,
         )
         self.nn_model = unet.to(device)
 
@@ -76,7 +78,7 @@ class ColdDDPM(DDPM):
 
         # return MSE between added noise, and our predicted noise
         pred = self.nn_model(x_t, _ts / self.T, c)
-        return self.loss_mse(x, pred)
+        return self.criterion(x, pred)
 
     @torch.no_grad()
     def sample(self, n_sample, size):

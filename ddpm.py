@@ -4,10 +4,12 @@ import torch
 
 
 class DDPM(ABC, nn.Module):
-    def __init__(self, unet, T, device, n_classes, **kwargs):
+    def __init__(self, unet, T, device, n_classes, criterion, **kwargs):
         super(DDPM, self).__init__()
         self.device = device
         self.n_classes = n_classes
+        self.T = T
+        self.criterion = criterion
 
     @abstractmethod
     def forward(self, x, c):

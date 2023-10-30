@@ -33,9 +33,9 @@ def ddpm_schedules(beta1, beta2, T):
 
 
 class NoiseDDPM(DDPM):
-    def __init__(self, unet, T, device, n_classes, betas):
+    def __init__(self, unet, T, device, n_classes, criterion, betas):
         super(NoiseDDPM, self).__init__(
-            unet=unet, T=T, device=device, n_classes=n_classes
+            unet=unet, T=T, device=device, n_classes=n_classes, criterion=criterion
         )
         self.nn_model = unet.to(device)
 
@@ -65,7 +65,7 @@ class NoiseDDPM(DDPM):
         # We should predict the "error term" from this x_t. Loss is what we return.
 
         # return MSE between added noise, and our predicted noise
-        return self.loss_mse(noise, self.nn_model(x_t, _ts / self.T, c))
+        return self.criterion(noise, self.nn_model(x_t, _ts / self.T, c))
 
     @torch.no_grad()
     def sample(self, n_sample, size):
