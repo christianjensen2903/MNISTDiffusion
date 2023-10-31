@@ -8,15 +8,26 @@ from classification_utils import SimpleCNN, train_model, evalaute_model
 DIMS = 2048
 
 
-def calculate_fid(pred: torch.Tensor, target: torch.Tensor, device: str) -> float:
+def calculate_fid(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    device: str,
+    batch_size: int = 32,
+) -> float:
     print("Calculating fid...")
     target = target.repeat(1, 3, 1, 1)
     pred = pred.repeat(1, 3, 1, 1)
 
     fid_calculator = FrechetInceptionDistance(normalize=True)
     fid_calculator = fid_calculator.to(device)
-    fid_calculator.update(target, real=True)
-    fid_calculator.update(pred, real=False)
+
+    n = target.size(0)
+    for i in range(0, n, batch_size):
+        end_i = min(i + batch_size, n)
+        target_batch = target[i:end_i]
+        pred_batch = pred[i:end_i]
+        fid_calculator.update(target_batch, real=True)
+        fid_calculator.update(pred_batch, real=False)
 
     return fid_calculator.compute()
 
