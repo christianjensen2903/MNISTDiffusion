@@ -145,7 +145,7 @@ def train_model(
             device,
             500 if args.calculate_metrics else visual_samples,
         )
-        target = get_balanced_samples(test_dataloader, samples.shape[0]).to(device)
+        target = get_balanced_samples(train_dataloader, samples.shape[0]).to(device)
 
         save_images(samples[:40], f"debug/samples.png")
         save_images(target[:40], f"debug/target.png")
@@ -159,22 +159,18 @@ def train_model(
                 target,
                 device=device,
             )
-            ssim = calculate_ssim(samples, target, device)
-            print(
-                f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f} | SSIM: {ssim:.4f}\n"
-            )
+            print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f} | FID: {fid:.4f}\n")
         else:
             print(f"EPOCH {ep + 1} | LOSS: {avg_loss:.4f}\n")
             fid = None
-            ssim = None
 
         if args.log_wandb:
-            log_wandb(ep, avg_loss, fid, ssim, total_time, args)
+            log_wandb(ep, avg_loss, fid, total_time, args)
 
         if args.save_model and ep == int(args.epochs - 1):
             save_model(model, args.save_dir + "model.pth")
 
-    evaluate_model(model, args, test_dataloader, device)
+    evaluate_model(model, args, train_dataloader, test_dataloader, device)
 
 
 def get_balanced_samples(dataloader: DataLoader, count: int) -> torch.Tensor:
@@ -229,7 +225,6 @@ def log_wandb(
     ep: int,
     train_loss: float,
     fid: float,
-    ssim: float,
     total_time: float,
     args: ArgsModel,
 ) -> None:
@@ -238,7 +233,6 @@ def log_wandb(
             "epoch": ep + 1,
             "train_loss": train_loss,
             "fid": fid,
-            "ssim": ssim,
             "total_time": total_time,
             f"sample": wandb.Image(args.save_dir + f"image_ep{ep}.png"),
         }
@@ -248,6 +242,7 @@ def log_wandb(
 def evaluate_model(
     model: DDPM,
     args: ArgsModel,
+    train_dataloader: DataLoader,
     test_dataloader: DataLoader,
     device: str,
 ):
@@ -256,7 +251,7 @@ def evaluate_model(
     start_time = time.time()
 
     samples, labels = generate_samples(model, args, device, 2000)
-    target = get_balanced_samples(test_dataloader, samples.shape[0]).to(device)
+    target = get_balanced_samples(train_dataloader, samples.shape[0]).to(device)
 
     sampling_time = time.time() - start_time
 
@@ -266,8 +261,6 @@ def evaluate_model(
         device=device,
     )
 
-    final_ssim = calculate_ssim(samples, target, device)
-
     final_cas = calculate_cas(
         samples,
         labels,
@@ -276,7 +269,6 @@ def evaluate_model(
     )
 
     print(f"Final FID: {final_fid:.4f}")
-    print(f"Final SSIM: {final_ssim:.4f}")
     print(f"Final CAS: {final_cas:.4f}")
     print(f"Sampling time: {sampling_time:.4f}")
 
@@ -285,7 +277,6 @@ def evaluate_model(
             {
                 "sampling_time": sampling_time,
                 "final_fid": final_fid,
-                "final_ssim": final_ssim,
                 "final_cas": final_cas,
             }
         )
