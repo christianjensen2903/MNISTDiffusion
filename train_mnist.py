@@ -167,8 +167,10 @@ def train_model(
         if args.log_wandb:
             log_wandb(ep, avg_loss, fid, total_time, args)
 
-        if args.save_model and ep == int(args.epochs - 1):
-            save_model(model, args.save_dir + "model.pth")
+    if args.save_model:
+        save_model(model, args.save_dir + "model.pth")
+        if args.log_wandb:
+            wandb.save(args.save_dir + "model.pth")
 
     evaluate_model(model, args, train_dataloader, test_dataloader, device)
 
@@ -208,6 +210,8 @@ def generate_samples(
         device
     )  # assuming labels are of type long
 
+    pbar = tqdm(total=count, desc="Generating Samples", unit="sample")
+
     while len(generated_samples) < count:
         samples, labels = model.sample(
             args.batch_size, (1, args.image_size, args.image_size)
@@ -215,8 +219,12 @@ def generate_samples(
         generated_samples = torch.cat((generated_samples, samples))
         generated_labels = torch.cat((generated_labels, labels))
 
+        pbar.update(min(args.batch_size, count - len(generated_samples)))
+
     generated_samples = generated_samples[:count]
     generated_labels = generated_labels[:count]
+
+    pbar.close()
 
     return generated_samples, generated_labels
 
