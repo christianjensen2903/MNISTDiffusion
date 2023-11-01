@@ -8,29 +8,31 @@ from utils import scale_images
 import os
 import torch
 from torch.utils.data import DataLoader
+from data_loader import create_mnist_dataloaders
 
 
 def train_gmm(dataloader: DataLoader, to_size=4, n_components=10):
-    # Dictionary to store pixelated images for each class
-    pixelated_images_per_class = defaultdict(list)
+    # List to store pixelated images
+    pixelated_images_list = []
 
     for images, labels in dataloader:
-        for image, label in zip(images, labels):
-            image = scale_images(image.unsqueeze(0), to_size=to_size)
-            pixelated_images_per_class[int(label)].append(image.view(-1).numpy())
+        # Scale the images to the desired size
+        images = scale_images(images, to_size=to_size)
 
-    # Dictionary to store trained GMM for each class
-    gmms = {}
+        # Convert the images to numpy
+        images = images.detach().cpu().numpy()
 
-    # Train GMM for each class
-    for label, pixelated_images in pixelated_images_per_class.items():
-        print(f"Training GMM for class {label}")
-        X_train = np.array(pixelated_images)
-        gmm = GaussianMixture(n_components=n_components, covariance_type="full")
-        gmm.fit(X_train)
-        gmms[label] = gmm
+        # Flatten each image in the batch and add to the list
+        flattened_images = images.reshape(images.shape[0], -1)
+        pixelated_images_list.append(flattened_images)
 
-    return gmms
+    # Convert list of arrays to single numpy array
+    X_train = np.concatenate(pixelated_images_list, axis=0)
+
+    gmm = GaussianMixture(n_components=n_components, covariance_type="full")
+    gmm.fit(X_train)
+
+    return gmm
 
 
 def save_gmm_model(gmms, filename="gmm_model.pkl"):
@@ -63,21 +65,12 @@ def load_if_exists(
     return gmms
 
 
-def sample_from_gmm_for_class(gmms, label: int, n_samples=1):
+def sample_from_gmm_for_class(gmm, n_samples=1):
     """Sample data from a trained GMM model for a specific class."""
 
-    if isinstance(label, str):
-        label = int(label)
+    samples, _ = gmm.sample(n_samples)
 
-    if isinstance(label, torch.Tensor):
-        label = label.item()
-
-    if label in gmms:
-        samples, _ = gmms[label].sample(n_samples)
-
-        return samples
-    else:
-        raise ValueError(f"No GMM trained for class {label}")
+    return samples
 
 
 def display_samples(samples):
@@ -91,9 +84,6 @@ def display_samples(samples):
         # Reshape the sample to its original shape
         image = sample.reshape(image_size, image_size)
 
-        # The images were normalized to [-1, 1], so denormalize them back to [0, 1]
-        image = (image + 1) / 2.0
-
         ax.imshow(image, cmap="gray")
         ax.axis("off")
 
@@ -103,15 +93,16 @@ def display_samples(samples):
 
 def main():
     path = "models/gmm_model.pkl"
-    gmms = train_gmm(image_size=16, to_size=2, n_components=1)
-    save_gmm_model(gmms, path)
-    gmms = load_gmm_model(path)
+    dataloader, _ = create_mnist_dataloaders(batch_size=32)
+    gmm = train_gmm(dataloader, to_size=4, n_components=10)
+    save_gmm_model(gmm, path)
+    gmm = load_gmm_model(path)
 
     # For instance, to sample from class 0
-    samples_for_class_0 = sample_from_gmm_for_class(gmms, label=0, n_samples=10)
+    samples = sample_from_gmm_for_class(gmm, n_samples=10)
 
     # Display the samples
-    display_samples(samples_for_class_0)
+    display_samples(samples)
 
 
 if __name__ == "__main__":

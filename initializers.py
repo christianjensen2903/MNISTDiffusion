@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 class SampleInitializer(ABC):
     @abstractmethod
-    def sample(self, size: tuple, label: int | str) -> torch.Tensor:
+    def sample(self, size: tuple) -> torch.Tensor:
         pass
 
 
@@ -27,9 +27,9 @@ class GMMInitializer(SampleInitializer):
     ):
         self.gmms = train_gmm(dataloader, n_components=n_components, to_size=to_size)
 
-    def sample(self, size, label):
+    def sample(self, size):
         n_sample = size[0]
-        samples = sample_from_gmm_for_class(self.gmms, label, n_samples=n_sample)
+        samples = sample_from_gmm_for_class(self.gmms, n_samples=n_sample)
         sample_img_size = int(samples.shape[-1] ** 0.5)
         samples = samples.reshape(n_sample, 1, sample_img_size, sample_img_size)
         samples = torch.tensor(samples, dtype=torch.float32)
