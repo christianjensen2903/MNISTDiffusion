@@ -4,32 +4,9 @@ from unet import UNetModel
 from ddpm import DDPM
 from pixelate import Pixelate
 from initializers import SampleInitializer
-from utils import save_images
+from utils import save_images, scale_images
 import math
 import numpy as np
-
-
-class LevelScheduler:
-    def get_probabilities(self, number_of_levels, **kwargs):
-        raise NotImplementedError("Must be implemented by subclasses.")
-
-
-class ArithmeticScheduler(LevelScheduler):
-    def get_probabilities(self, number_of_levels):
-        prob_dist = [i for i in range(1, number_of_levels + 1)]
-        return [p / sum(prob_dist) for p in prob_dist]
-
-
-class PowerScheduler(LevelScheduler):
-    def get_probabilities(self, number_of_levels, power=0.4):
-        prob_dist = [i**power for i in range(1, number_of_levels + 1)]
-        return [p / sum(prob_dist) for p in prob_dist]
-
-
-class GeometricScheduler(LevelScheduler):
-    def get_probabilities(self, number_of_levels, base=1.5):
-        prob_dist = [base**i for i in range(number_of_levels)]
-        return [p / sum(prob_dist) for p in prob_dist]
 
 
 class ColdDDPM(DDPM):
@@ -43,7 +20,6 @@ class ColdDDPM(DDPM):
         n_between: int,
         initializer: SampleInitializer,
         minimum_pixelation: int,
-        level_scheduler: LevelScheduler = PowerScheduler(),
     ):
         super(ColdDDPM, self).__init__(
             unet=unet,
@@ -64,7 +40,6 @@ class ColdDDPM(DDPM):
         self.T = T
         self.n_between = n_between
         self.min_size = minimum_pixelation
-        self.scheduler = level_scheduler
 
     def forward(self, x, c):
         """
@@ -86,8 +61,15 @@ class ColdDDPM(DDPM):
 
         # Sample x_t for classes
         x_t = torch.cat(
-            [self.sample_initializer.sample((1,) + size, c) for c in c_i]
+            [
+                self.sample_initializer.sample(
+                    (1, self.nn_model.out_channels, self.min_size, self.min_size), c
+                )
+                for c in c_i
+            ]
         ).to(self.device)
+
+        x_t = scale_images(x_t, to_size=size[-1])
 
         for t in range(self.T, 0, -1):
             t_is = torch.tensor([t / self.T]).to(self.device)

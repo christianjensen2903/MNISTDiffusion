@@ -117,7 +117,9 @@ class ScalingDDPM(DDPM):
         # Sample x_t for classes
         x_t = torch.cat(
             [
-                self.sample_initializer.sample((1, 1, self.min_size, self.min_size), c)
+                self.sample_initializer.sample(
+                    (1, self.nn_model.out_channels, self.min_size, self.min_size), c
+                )
                 for c in c_i
             ]
         ).to(self.device)

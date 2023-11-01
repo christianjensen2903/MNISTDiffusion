@@ -95,7 +95,13 @@ def display_samples(samples, channels=3):
         # The images were normalized to [-1, 1], so denormalize them back to [0, 1]
         image = (image + 1) / 2.0
 
-        ax.imshow(image, cmap="gray")
+        # clip any values that are outside the range [0, 1]. Image is a numpy array
+        image = np.clip(image, 0, 1)
+
+        # Transpose the image to (height, width, channels)
+        image = image.transpose(1, 2, 0)
+
+        ax.imshow(image)
         ax.axis("off")
 
     plt.tight_layout()
@@ -104,7 +110,8 @@ def display_samples(samples, channels=3):
 
 def main():
     path = "models/gmm_model.pkl"
-    gmms = train_gmm(image_size=16, to_size=2, n_components=1)
+    dataloader, _ = create_cifar_dataloaders(32)
+    gmms = train_gmm(dataloader, to_size=4, n_components=10)
     save_gmm_model(gmms, path)
     gmms = load_gmm_model(path)
 

@@ -49,19 +49,19 @@ class ArgsModel(BaseModel):
     timesteps: int = 1000
     n_between: int = 0
     minimum_pixelation: int = 4
-    n_feat = 64
+    n_feat = 128
     num_res_blocks = 2
-    num_heads = 4
-    attention_resolutions = [16]
+    num_heads = 1
+    attention_resolutions = [2, 4]
     channel_mult = (1, 2, 4)
     epochs: int = 50
     lr: float = 4e-4
     positional_degree: int = 6
     betas = (1e-4, 0.02)
     log_freq: int = 200
-    image_size: int = 16
-    dropout: float = 0.0
-    gmm_components: int = 1
+    image_size: int = 32
+    dropout: float = 0.3
+    gmm_components: int = 10
     n_classes: int = 10
     model_ema_steps: int = 10
     model_ema_decay: float = 0.995
@@ -70,7 +70,7 @@ class ArgsModel(BaseModel):
     dataset: Dataset = Dataset.mnist
     channels: int = 1
     level_scheduler: str = "power"
-    power: float = 0
+    power: float = 2
     log_wandb: bool = False
     calculate_metrics: bool = False
     sweep_id: str = None
@@ -118,6 +118,7 @@ def train_model(
         total_loss = 0
 
         for x, c in pbar:
+            break
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
 

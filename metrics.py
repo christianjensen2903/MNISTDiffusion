@@ -15,8 +15,10 @@ def calculate_fid(
     batch_size: int = 32,
 ) -> float:
     print("Calculating fid...")
-    target = target.repeat(1, 3, 1, 1)
-    pred = pred.repeat(1, 3, 1, 1)
+    if target.shape[1] == 1:
+        target = target.repeat(1, 3, 1, 1)
+    if pred.shape[1] == 1:
+        pred = pred.repeat(1, 3, 1, 1)
 
     fid_calculator = FrechetInceptionDistance(normalize=True)
     fid_calculator = fid_calculator.to(device)
