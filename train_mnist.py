@@ -118,7 +118,6 @@ def train_model(
         total_loss = 0
 
         for x, c in pbar:
-            break
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
 
