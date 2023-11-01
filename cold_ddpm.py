@@ -81,12 +81,9 @@ class ColdDDPM(DDPM):
     @torch.no_grad()
     def sample(self, n_sample, size):
         # Sample x_t for classes
+        channels = size[0]
         x_t = self.sample_initializer.sample(
-            (
-                n_sample,
-                1,
-            )
-            + size
+            (n_sample, channels, self.min_size, self.min_size)
         ).to(self.device)
 
         for t in range(self.T, 0, -1):

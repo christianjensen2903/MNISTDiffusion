@@ -67,7 +67,8 @@ class ArgsModel(BaseModel):
     model_ema_decay: float = 0.995
     model_type: ModelType = ModelType.scaling
     loss_type: LossType = LossType.l1
-    dataset: Dataset = Dataset.mnist
+    dataset: Dataset = Dataset.cifar
+    channels: int = 3
     level_scheduler: str = "power"
     power: float = -0.4
     log_wandb: bool = False
@@ -217,7 +218,9 @@ def generate_samples(
     pbar = tqdm(total=count, desc="Generating Samples", unit="sample")
 
     while len(generated_samples) < count:
-        samples = model.sample(args.batch_size, (1, args.image_size, args.image_size))
+        samples = model.sample(
+            args.batch_size, (args.channels, args.image_size, args.image_size)
+        )
         generated_samples = torch.cat((generated_samples, samples))
 
         pbar.update(min(args.batch_size, count - len(generated_samples)))
@@ -302,17 +305,14 @@ def main():
         train_dataloader, test_dataloader = create_mnist_dataloaders(
             batch_size=args.batch_size, image_size=args.image_size
         )
-        channels = 1
     elif args.dataset == Dataset.cifar:
         train_dataloader, test_dataloader = create_cifar_dataloaders(
             batch_size=args.batch_size, image_size=args.image_size
         )
-        channels = 3
     elif args.dataset == Dataset.celeba:
         train_dataloader, test_dataloader = create_celeba_dataloaders(
             batch_size=args.batch_size, image_size=args.image_size
         )
-        channels = 3
 
     if args.loss_type == LossType.l1:
         criterion = torch.nn.L1Loss()
@@ -335,9 +335,9 @@ def main():
     if args.model_type == ModelType.noise:
         model = NoiseDDPM(
             unet=UNetModel(
-                in_channels=channels,
+                in_channels=args.channels,
                 model_channels=args.n_feat,
-                out_channels=channels,
+                out_channels=args.channels,
                 num_res_blocks=args.num_res_blocks,
                 attention_resolutions=tuple(attention_ds),
                 channel_mult=args.channel_mult,
@@ -352,9 +352,9 @@ def main():
     elif args.model_type == ModelType.cold:
         model = ColdDDPM(
             unet=UNetModel(
-                in_channels=channels,
+                in_channels=args.channels,
                 model_channels=args.n_feat,
-                out_channels=channels,
+                out_channels=args.channels,
                 num_res_blocks=args.num_res_blocks,
                 attention_resolutions=tuple(attention_ds),
                 channel_mult=args.channel_mult,
@@ -382,9 +382,9 @@ def main():
 
         model = ScalingDDPM(
             unet=UNetModel(
-                in_channels=channels + args.positional_degree * 4,
+                in_channels=args.channels + args.positional_degree * 4,
                 model_channels=args.n_feat,
-                out_channels=channels,
+                out_channels=args.channels,
                 num_res_blocks=args.num_res_blocks,
                 attention_resolutions=tuple(attention_ds),
                 channel_mult=args.channel_mult,

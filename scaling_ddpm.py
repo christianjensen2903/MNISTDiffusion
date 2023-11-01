@@ -116,8 +116,9 @@ class ScalingDDPM(DDPM):
         self, n_sample: int, size: tuple[int]
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Sample x_t for classes
+        channels = size[0]
         x_t = self.sample_initializer.sample(
-            (n_sample, 1, self.min_size, self.min_size)
+            (n_sample, channels, self.min_size, self.min_size)
         ).to(self.device)
 
         x_t = scale_images(x_t, to_size=self.min_size * 2)

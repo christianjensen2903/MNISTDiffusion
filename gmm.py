@@ -8,7 +8,7 @@ from utils import scale_images
 import os
 import torch
 from torch.utils.data import DataLoader
-from data_loader import create_mnist_dataloaders
+from data_loader import create_mnist_dataloaders, create_cifar_dataloaders
 
 
 def train_gmm(dataloader: DataLoader, to_size=4, n_components=10):
@@ -23,7 +23,9 @@ def train_gmm(dataloader: DataLoader, to_size=4, n_components=10):
         images = images.detach().cpu().numpy()
 
         # Flatten each image in the batch and add to the list
-        flattened_images = images.reshape(images.shape[0], -1)
+        # Ensure that it works for multi-channel images
+        n_samples, channels, height, width = images.shape
+        flattened_images = images.reshape(n_samples, -1)
         pixelated_images_list.append(flattened_images)
 
     # Convert list of arrays to single numpy array
@@ -73,18 +75,18 @@ def sample_from_gmm_for_class(gmm, n_samples=1):
     return samples
 
 
-def display_samples(samples):
+def display_samples(samples, channels=3):
     """Display a set of samples."""
     # Prepare the figure
     fig, axes = plt.subplots(1, len(samples), figsize=(10, 2))
 
-    image_size = int(np.sqrt(samples.shape[1]))
+    image_size = int(np.sqrt(samples.shape[1] / channels))
 
     for ax, sample in zip(axes, samples):
         # Reshape the sample to its original shape
-        image = sample.reshape(image_size, image_size)
+        image = sample.reshape(channels, image_size, image_size)
 
-        ax.imshow(image, cmap="gray")
+        ax.imshow(image)
         ax.axis("off")
 
     plt.tight_layout()
@@ -93,13 +95,15 @@ def display_samples(samples):
 
 def main():
     path = "models/gmm_model.pkl"
-    dataloader, _ = create_mnist_dataloaders(batch_size=32)
+    dataloader, _ = create_cifar_dataloaders(batch_size=32, image_size=32)
     gmm = train_gmm(dataloader, to_size=4, n_components=10)
     save_gmm_model(gmm, path)
     gmm = load_gmm_model(path)
 
     # For instance, to sample from class 0
     samples = sample_from_gmm_for_class(gmm, n_samples=10)
+
+    print(samples.shape)
 
     # Display the samples
     display_samples(samples)

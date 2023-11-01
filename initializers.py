@@ -29,8 +29,9 @@ class GMMInitializer(SampleInitializer):
 
     def sample(self, size):
         n_sample = size[0]
+        print(n_sample)
         samples = sample_from_gmm_for_class(self.gmms, n_samples=n_sample)
-        sample_img_size = int(samples.shape[-1] ** 0.5)
-        samples = samples.reshape(n_sample, 1, sample_img_size, sample_img_size)
+        print(samples.shape)
+        samples = samples.reshape(size)
         samples = torch.tensor(samples, dtype=torch.float32)
         return scale_images(samples, size[-1])
