@@ -50,6 +50,7 @@ class ScalingDDPM(DDPM):
         unet: UNetModel,
         T,
         device,
+        n_classes,
         criterion,
         n_between: int,
         initializer: SampleInitializer,
@@ -61,6 +62,7 @@ class ScalingDDPM(DDPM):
             unet=unet,
             T=T,
             device=device,
+            n_classes=n_classes,
             criterion=criterion,
         )
         self.nn_model = unet.to(device)
@@ -78,7 +80,7 @@ class ScalingDDPM(DDPM):
         self.positional_degree = positional_degree
         self.scheduler = level_scheduler
 
-    def forward(self, x):
+    def forward(self, x, c):
         """
         this method is used in training, so samples t and noise randomly
         """
@@ -94,31 +96,30 @@ class ScalingDDPM(DDPM):
 
         _ts = torch.randint(1, self.n_between + 2, (x.shape[0],)).to(self.device)
 
-        if current_size == self.min_size:
-            x_t = self.sample_initializer.sample(
-                (x.shape[0], 1, current_size, current_size)
-            )
-        else:
-            x_t_list = [self.degredation(x[i], _ts[i]) for i in range(x.shape[0])]
-            x_t = torch.stack(x_t_list, dim=0)
+        x_t_list = [self.degredation(x[i], _ts[i]) for i in range(x.shape[0])]
+        x_t = torch.stack(x_t_list, dim=0)
 
         x_t_pos = self._add_positional_embedding(x_t)
 
         # return MSE between added noise, and our predicted noise
         pred = self.nn_model(
-            x_t_pos, ((self.n_between + 1) * current_level + _ts) / self.T
+            x_t_pos, ((self.n_between + 1) * current_level + _ts) / self.T, c
         )
 
-        return self.criterion(x, pred), pred, x_t
+        return self.criterion(x, pred)
 
     @torch.no_grad()
     def sample(
         self, n_sample: int, size: tuple[int]
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        c_i = self.get_ci(n_sample)
+
         # Sample x_t for classes
-        channels = size[0]
-        x_t = self.sample_initializer.sample(
-            (n_sample, channels, self.min_size, self.min_size)
+        x_t = torch.cat(
+            [
+                self.sample_initializer.sample((1, 1, self.min_size, self.min_size), c)
+                for c in c_i
+            ]
         ).to(self.device)
 
         x_t = scale_images(x_t, to_size=self.min_size * 2)
@@ -134,7 +135,7 @@ class ScalingDDPM(DDPM):
 
                 x_t_pos = self._add_positional_embedding(x_t)
 
-                x_0 = self.nn_model(x_t_pos, t_is / self.T)
+                x_0 = self.nn_model(x_t_pos, t_is / self.T, c_i)
 
                 x_0.clamp_(-1, 1)
 
@@ -150,7 +151,7 @@ class ScalingDDPM(DDPM):
 
                 t -= 1
 
-        return x_0
+        return x_0, c_i
 
     def _add_positional_embedding(self, x):
         size = x.shape[-1]

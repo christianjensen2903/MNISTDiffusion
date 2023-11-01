@@ -67,10 +67,10 @@ class ArgsModel(BaseModel):
     model_ema_decay: float = 0.995
     model_type: ModelType = ModelType.scaling
     loss_type: LossType = LossType.l1
-    dataset: Dataset = Dataset.cifar
-    channels: int = 3
+    dataset: Dataset = Dataset.mnist
+    channels: int = 1
     level_scheduler: str = "power"
-    power: float = -0.4
+    power: float = 0
     log_wandb: bool = False
     calculate_metrics: bool = False
     sweep_id: str = None
@@ -117,19 +117,12 @@ def train_model(
         pbar = tqdm(train_dataloader)
         total_loss = 0
 
-        i = 0
-        for x, _ in pbar:
+        for x, c in pbar:
             optim.zero_grad()
-            x = x.to(device)
+            x, c = x.to(device), c.to(device)
 
-            loss, pred, x_t = model(x)
+            loss = model(x, c)
             loss.backward()
-
-            if i == 0:
-                save_images(pred, f"debug/pred.png")
-                save_images(x_t, f"debug/x_t.png")
-                save_images(x, f"debug/x.png")
-                i += 1
 
             total_loss += loss.item()
 
@@ -147,7 +140,7 @@ def train_model(
 
         visual_samples = 4 * args.n_classes
 
-        samples = generate_samples(
+        samples, labels = generate_samples(
             model_ema.module,
             args,
             device,
@@ -214,22 +207,27 @@ def generate_samples(
     model: DDPM, args: ArgsModel, device: str, count: int
 ) -> tuple[torch.Tensor, torch.Tensor]:
     generated_samples = torch.tensor([]).to(device)
+    generated_labels = torch.tensor([], dtype=torch.long).to(
+        device
+    )  # assuming labels are of type long
 
     pbar = tqdm(total=count, desc="Generating Samples", unit="sample")
 
     while len(generated_samples) < count:
-        samples = model.sample(
-            args.batch_size, (args.channels, args.image_size, args.image_size)
+        samples, labels = model.sample(
+            args.batch_size, (1, args.image_size, args.image_size)
         )
         generated_samples = torch.cat((generated_samples, samples))
+        generated_labels = torch.cat((generated_labels, labels))
 
         pbar.update(min(args.batch_size, count - len(generated_samples)))
 
     generated_samples = generated_samples[:count]
+    generated_labels = generated_labels[:count]
 
     pbar.close()
 
-    return generated_samples
+    return generated_samples, generated_labels
 
 
 def log_wandb(
@@ -261,7 +259,7 @@ def evaluate_model(
 
     start_time = time.time()
 
-    samples = generate_samples(model, args, device, 2000)
+    samples, labels = generate_samples(model, args, device, 2000)
     target = get_balanced_samples(train_dataloader, samples.shape[0]).to(device)
 
     sampling_time = time.time() - start_time
@@ -272,7 +270,15 @@ def evaluate_model(
         device=device,
     )
 
+    final_cas = calculate_cas(
+        samples,
+        labels,
+        test_dataloader,
+        device,
+    )
+
     print(f"Final FID: {final_fid:.4f}")
+    print(f"Final CAS: {final_cas:.4f}")
     print(f"Sampling time: {sampling_time:.4f}")
 
     if args.log_wandb:
@@ -280,6 +286,7 @@ def evaluate_model(
             {
                 "sampling_time": sampling_time,
                 "final_fid": final_fid,
+                "final_cas": final_cas,
             }
         )
 
@@ -340,6 +347,7 @@ def main():
                 out_channels=args.channels,
                 num_res_blocks=args.num_res_blocks,
                 attention_resolutions=tuple(attention_ds),
+                num_classes=args.n_classes,
                 channel_mult=args.channel_mult,
                 dropout=args.dropout,
                 num_heads=args.num_heads,
@@ -347,6 +355,7 @@ def main():
             T=args.timesteps,
             device=device,
             criterion=criterion,
+            n_classes=args.n_classes,
             betas=args.betas,
         )
     elif args.model_type == ModelType.cold:
@@ -357,6 +366,7 @@ def main():
                 out_channels=args.channels,
                 num_res_blocks=args.num_res_blocks,
                 attention_resolutions=tuple(attention_ds),
+                num_classes=args.n_classes,
                 channel_mult=args.channel_mult,
                 dropout=args.dropout,
                 num_heads=args.num_heads,
@@ -364,6 +374,7 @@ def main():
             T=pixelate_T,
             device=device,
             criterion=criterion,
+            n_classes=args.n_classes,
             n_between=args.n_between,
             initializer=initializer,
             minimum_pixelation=args.minimum_pixelation,
@@ -387,12 +398,14 @@ def main():
                 out_channels=args.channels,
                 num_res_blocks=args.num_res_blocks,
                 attention_resolutions=tuple(attention_ds),
+                num_classes=args.n_classes,
                 channel_mult=args.channel_mult,
                 dropout=args.dropout,
                 num_heads=args.num_heads,
             ),
             T=pixelate_T,
             device=device,
+            n_classes=args.n_classes,
             criterion=criterion,
             n_between=args.n_between,
             initializer=initializer,

@@ -33,9 +33,9 @@ def ddpm_schedules(beta1, beta2, T):
 
 
 class NoiseDDPM(DDPM):
-    def __init__(self, unet, T, device, criterion, betas):
+    def __init__(self, unet, T, device, n_classes, criterion, betas):
         super(NoiseDDPM, self).__init__(
-            unet=unet, T=T, device=device, criterion=criterion
+            unet=unet, T=T, device=device, n_classes=n_classes, criterion=criterion
         )
         self.nn_model = unet.to(device)
 
@@ -48,7 +48,7 @@ class NoiseDDPM(DDPM):
         self.device = device
         self.loss_mse = nn.MSELoss()
 
-    def forward(self, x):
+    def forward(self, x, c):
         """
         this method is used in training, so samples t and noise randomly
         """
@@ -65,7 +65,7 @@ class NoiseDDPM(DDPM):
         # We should predict the "error term" from this x_t. Loss is what we return.
 
         # return MSE between added noise, and our predicted noise
-        return self.criterion(noise, self.nn_model(x_t, _ts / self.T))
+        return self.criterion(noise, self.nn_model(x_t, _ts / self.T, c))
 
     @torch.no_grad()
     def sample(self, n_sample, size):
@@ -73,14 +73,16 @@ class NoiseDDPM(DDPM):
             self.device
         )  # x_T ~ N(0, 1), sample initial noise
 
+        c_i = self.get_ci(n_sample)
+
         for i in range(self.T, 0, -1):
             t_is = torch.tensor([i / self.T]).repeat(n_sample).to(self.device)
             z = torch.randn(n_sample, *size).to(self.device) if i > 1 else 0
 
-            eps = self.nn_model(x_i, t_is)
+            eps = self.nn_model(x_i, t_is, c_i)
             x_0 = x_i - eps * self.mab_over_sqrtmab[i]
             x_0.clamp_(-1, 1)
 
             x_i = self.oneover_sqrta[i] * x_0 + self.sqrt_beta_t[i] * z
 
-        return x_i
+        return x_i, c_i
