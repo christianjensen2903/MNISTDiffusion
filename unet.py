@@ -302,6 +302,7 @@ class UNetModel(nn.Module):
         in_channels,
         model_channels,
         out_channels,
+        image_size,
         num_res_blocks,
         attention_resolutions,
         dropout=0,
@@ -331,6 +332,7 @@ class UNetModel(nn.Module):
         self.use_checkpoint = use_checkpoint
         self.num_heads = num_heads
         self.num_heads_upsample = num_heads_upsample
+        self.fixed_output_size = image_size
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
@@ -443,18 +445,7 @@ class UNetModel(nn.Module):
         return next(self.input_blocks.parameters()).dtype
 
     def forward(self, x, timesteps, y=None):
-        """
-        Apply the model to an input batch.
-
-        :param x: an [N x C x ...] Tensor of inputs.
-        :param timesteps: a 1-D batch of timesteps.
-        :param y: an [N] Tensor of labels, if class-conditional.
-        :return: an [N x C x ...] Tensor of outputs.
-        """
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
-
+        # Initial processing
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
 
@@ -463,13 +454,25 @@ class UNetModel(nn.Module):
             emb = emb + self.label_emb(y)
 
         h = x.type(self.inner_dtype)
+        # Downsampling path
         for module in self.input_blocks:
             h = module(h, emb)
             hs.append(h)
+
+        # Bottleneck processing
         h = self.middle_block(h, emb)
+
+        # Upsampling path
         for module in self.output_blocks:
             cat_in = th.cat([h, hs.pop()], dim=1)
             h = module(cat_in, emb)
+
+        # Upscale to the desired fixed size, if not already at that size
+        if h.shape[-2:] != self.fixed_output_size:
+            h = F.interpolate(
+                h, size=self.fixed_output_size, mode="bilinear", align_corners=False
+            )
+
         h = h.type(x.dtype)
         return self.out(h)
 

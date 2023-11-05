@@ -54,9 +54,9 @@ class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 1000
     n_between: int = 0
-    minimum_pixelation: int = 4
+    minimum_pixelation: int = 2
     n_feat = 128
-    num_res_blocks = 2
+    num_res_blocks = 4
     num_heads = 1
     attention_resolutions = [2, 4]
     channel_mult = (1, 2, 4)
@@ -413,6 +413,7 @@ def main():
                 in_channels=args.channels + args.positional_degree * 4,
                 model_channels=args.n_feat,
                 out_channels=args.channels,
+                image_size=args.image_size,
                 num_res_blocks=args.num_res_blocks,
                 attention_resolutions=tuple(attention_ds),
                 num_classes=args.n_classes,
