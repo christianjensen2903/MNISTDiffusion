@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 from typing import Any
 from classification_utils import SimpleCNN, train_model, evalaute_model
+from data_loader import create_mnist_dataloaders
 
 DIMS = 2048
 
@@ -63,6 +64,7 @@ def calculate_cas(
     device: str,
     batch_size: int = 32,
 ) -> float:
+    print("Calculating CAS...")
     dataset = SampleDataset(samples, labels)
     train_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     image_size = samples.shape[-1]
@@ -71,3 +73,57 @@ def calculate_cas(
     train_model(model, train_dataloader, device)
     accuracy = evalaute_model(model, test_dataloader, device)
     return accuracy
+
+
+def main():
+    # Train model based samples from training data
+    # Calculate FID, SSIM, CAS
+
+    n_samples = 2000
+    batch_size = 32
+    image_size = 32
+
+    train_dataloader, test_dataloader = create_mnist_dataloaders(
+        batch_size, image_size=image_size
+    )
+
+    samples = []
+    labels = []
+    for batch in train_dataloader:
+        x, y = batch
+        samples.append(x)
+        labels.append(y)
+
+    samples = torch.cat(samples, dim=0)
+    labels = torch.cat(labels, dim=0)
+
+    samples = samples[:n_samples]
+    labels = labels[:n_samples]
+
+    # Sample some other images
+
+    samples_ref = []
+    labels_ref = []
+
+    for batch in test_dataloader:
+        x, y = batch
+        samples_ref.append(x)
+        labels_ref.append(y)
+
+    samples_ref = torch.cat(samples_ref, dim=0)
+    labels_ref = torch.cat(labels_ref, dim=0)
+
+    samples_ref = samples_ref[:n_samples]
+    labels_ref = labels_ref[:n_samples]
+
+    fid = calculate_fid(samples, samples_ref, "cpu", batch_size=batch_size)
+    ssim = calculate_ssim(samples, samples, "cpu")
+    cas = calculate_cas(samples, labels, test_dataloader, "cpu")
+
+    print(f"FID: {fid}")
+    print(f"SSIM: {ssim}")
+    print(f"CAS: {cas}")
+
+
+if __name__ == "__main__":
+    main()

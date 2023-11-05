@@ -97,7 +97,11 @@ class ScalingDDPM(DDPM):
         _ts = torch.randint(1, self.n_between + 2, (x.shape[0],)).to(self.device)
 
         x_t_list = [self.degredation(x[i], _ts[i]) for i in range(x.shape[0])]
+
         x_t = torch.stack(x_t_list, dim=0)
+
+        x = [self.degredation(x[i], _ts[i] - 1) for i in range(x.shape[0])]
+        x = torch.stack(x, dim=0)
 
         x_t_pos = self._add_positional_embedding(x_t)
 
@@ -106,7 +110,7 @@ class ScalingDDPM(DDPM):
             x_t_pos, ((self.n_between + 1) * current_level + _ts) / self.T, c
         )
 
-        return self.criterion(x, pred)
+        return self.criterion(x, pred), pred, x_t, x
 
     @torch.no_grad()
     def sample(
@@ -130,30 +134,37 @@ class ScalingDDPM(DDPM):
 
         t = self.T
 
-        while current_size <= size[-1]:
+        save_images(scale_images(x_t, size[-1]), f"debug/samples/{t}.png")
+
+        done = False
+        while not done:
             for relative_t in range(self.n_between + 1, 0, -1):
                 t_is = torch.tensor([t]).to(self.device)
                 t_is = t_is.repeat(n_sample)
 
                 x_t_pos = self._add_positional_embedding(x_t)
 
-                x_0 = self.nn_model(x_t_pos, t_is / self.T, c_i)
+                x_t = self.nn_model(x_t_pos, t_is / self.T, c_i)
+                x_t.clamp_(-1, 1)
 
-                x_0.clamp_(-1, 1)
-
-                x_t = (
-                    x_t
-                    - self.degredation(x_0, (relative_t))
-                    + self.degredation(x_0, (relative_t - 1))
-                )
-
-                if relative_t - 1 == 0:
-                    current_size *= 2
-                    x_t = scale_images(x_0, current_size)
+                # x_t = (
+                #     x_t
+                #     - self.degredation(x_0, (relative_t))
+                #     + self.degredation(x_0, (relative_t - 1))
+                # )
 
                 t -= 1
+                if t == 0:
+                    done = True
 
-        return x_0, c_i
+                if relative_t - 1 == 0 and not done:
+                    current_size *= 2
+                    x_t = scale_images(x_t, current_size)
+
+                save_images(scale_images(x_t, size[-1]), f"debug/samples/{t}.png")
+                # save_images(scale_images(x_0, size[-1]), f"debug/samples/{t}_0.png")
+
+        return x_t, c_i
 
     def _add_positional_embedding(self, x):
         size = x.shape[-1]

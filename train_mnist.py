@@ -21,7 +21,13 @@ from data_loader import (
 import wandb
 from pydantic import BaseModel
 from tqdm import tqdm
-from utils import save_images, save_model, setup_device, ExponentialMovingAverage
+from utils import (
+    save_images,
+    save_model,
+    setup_device,
+    ExponentialMovingAverage,
+    scale_images,
+)
 from enum import Enum
 from metrics import calculate_fid, calculate_ssim, calculate_cas
 import time
@@ -117,12 +123,23 @@ def train_model(
         pbar = tqdm(train_dataloader)
         total_loss = 0
 
+        i = 0
         for x, c in pbar:
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
 
-            loss = model(x, c)
+            loss, pred, x_t, x_downscaled = model(x, c)
             loss.backward()
+
+            if i < 5:
+                size = x.shape[-1]
+                save_images(
+                    scale_images(x_downscaled, size), f"debug/x_downscaled_{i}.png"
+                )
+                save_images(scale_images(x_t, size), f"debug/x_t_{i}.png")
+                save_images(scale_images(pred, size), f"debug/pred_{i}.png")
+                save_images(x, f"debug/x_{i}.png")
+                i += 1
 
             total_loss += loss.item()
 
