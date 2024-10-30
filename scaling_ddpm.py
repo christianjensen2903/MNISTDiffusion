@@ -71,7 +71,6 @@ class ScalingDDPM(DDPM):
         self.loss_mse = nn.MSELoss()
         self.sample_initializer = initializer
         self.degredation = Pixelate(
-            n_between=n_between,
             minimum_pixelation=minimum_pixelation,
         )
         self.T = T
@@ -89,27 +88,23 @@ class ScalingDDPM(DDPM):
 
         current_level = self._sample_level(initial_size, self.min_size * 2)
 
+        _ts = torch.ones((x.shape[0],)).to(self.device)
+
         # Calculate new size
         current_size = initial_size // (2**current_level)
 
         x_downscaled = scale_images(x, to_size=current_size)
 
-        _ts = torch.randint(1, self.n_between + 2, (x.shape[0],)).to(self.device)
-
-        x_t_list = [
-            self.degredation(x_downscaled[i], _ts[i]) for i in range(x.shape[0])
-        ]
+        x_t_list = [self.degredation(x_downscaled[i]) for i in range(x.shape[0])]
 
         x_t = torch.stack(x_t_list, dim=0)
 
         x_t_pos = self._add_positional_embedding(x_t)
 
         # return MSE between added noise, and our predicted noise
-        pred = self.nn_model(
-            x_t_pos, ((self.n_between + 1) * current_level + _ts) / self.T, c
-        )
+        pred = self.nn_model(x_t_pos, (current_level + _ts) / self.T, c)
 
-        return self.criterion(x, pred), pred, x_t, x
+        return self.criterion(x, pred), pred, x_t, x_downscaled
 
     @torch.no_grad()
     def sample(
@@ -136,31 +131,22 @@ class ScalingDDPM(DDPM):
         save_images(scale_images(x_t, size[-1]), f"debug/samples/{t}.png")
 
         while current_size <= size[-1]:
-            for relative_t in range(self.n_between + 1, 0, -1):
-                t_is = torch.tensor([t]).to(self.device)
-                t_is = t_is.repeat(n_sample)
+            t_is = torch.tensor([t]).to(self.device)
+            t_is = t_is.repeat(n_sample)
 
-                x_t_pos = self._add_positional_embedding(x_t)
+            x_t_pos = self._add_positional_embedding(x_t)
 
-                x_0 = self.nn_model(x_t_pos, t_is / self.T, c_i)
-                x_0.clamp_(-1, 1)
+            x_0 = self.nn_model(x_t_pos, t_is / self.T, c_i)
+            x_0.clamp_(-1, 1)
 
-                x_0 = scale_images(x_0, to_size=current_size)
+            x_0 = scale_images(x_0, to_size=current_size)
 
-                x_t = (
-                    x_t
-                    - self.degredation(x_0, (relative_t))
-                    + self.degredation(x_0, (relative_t - 1))
-                )
+            t -= 1
 
-                t -= 1
+            current_size *= 2
+            x_t = scale_images(x_0, current_size)
 
-                if relative_t - 1 == 0:
-                    current_size *= 2
-                    x_t = scale_images(x_t, current_size)
-
-                save_images(scale_images(x_t, size[-1]), f"debug/samples/{t}.png")
-                save_images(scale_images(x_0, size[-1]), f"debug/samples/{t}_0.png")
+            save_images(scale_images(x_t, size[-1]), f"debug/samples/{t}.png")
 
         return x_0, c_i
 

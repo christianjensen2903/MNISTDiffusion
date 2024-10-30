@@ -68,17 +68,17 @@ class ArgsModel(BaseModel):
     image_size: int = 32
     dropout: float = 0.3
     gmm_components: int = 10
-    n_classes: int = 10
+    n_classes: int = 40
     model_ema_steps: int = 10
     model_ema_decay: float = 0.995
     model_type: ModelType = ModelType.scaling
     loss_type: LossType = LossType.l1
-    dataset: Dataset = Dataset.mnist
-    channels: int = 1
+    dataset: Dataset = Dataset.cifar
+    channels: int = 3
     level_scheduler: str = "power"
-    power: float = 2
+    power: float = 0
     log_wandb: bool = False
-    calculate_metrics: bool = False
+    calculate_metrics: bool = True
     sweep_id: str = None
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
@@ -348,9 +348,7 @@ def main():
         to_size=args.minimum_pixelation,
         n_components=args.gmm_components,
     )
-    pixelate_T = Pixelate(args.n_between, args.minimum_pixelation).calculate_T(
-        args.image_size
-    )
+    pixelate_T = Pixelate(args.minimum_pixelation).calculate_T(args.image_size)
 
     attention_ds = []
     for res in args.attention_resolutions:
