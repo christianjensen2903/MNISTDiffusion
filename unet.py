@@ -468,10 +468,10 @@ class UNetModel(nn.Module):
             h = module(cat_in, emb)
 
         # Upscale to the desired fixed size, if not already at that size
-        if h.shape[-2:] != self.fixed_output_size:
-            h = F.interpolate(
-                h, size=self.fixed_output_size, mode="bilinear", align_corners=False
-            )
+        # if h.shape[-2:] != self.fixed_output_size:
+        #     h = F.interpolate(
+        #         h, size=self.fixed_output_size, mode="bilinear", align_corners=False
+        #     )
 
         h = h.type(x.dtype)
         return self.out(h)

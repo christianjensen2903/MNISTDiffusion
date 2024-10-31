@@ -104,7 +104,12 @@ class ScalingDDPM(DDPM):
         # return MSE between added noise, and our predicted noise
         pred = self.nn_model(x_t_pos, (current_level + _ts) / self.T, c)
 
-        return self.criterion(x, pred), pred, x_t, x_downscaled
+        return (
+            self.criterion(x_downscaled, pred) / x.shape[0],
+            pred,
+            x_t,
+            x_downscaled,
+        )
 
     @torch.no_grad()
     def sample(
