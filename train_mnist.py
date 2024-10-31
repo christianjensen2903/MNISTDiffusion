@@ -312,7 +312,7 @@ def initialize_wandb(args: ArgsModel) -> ArgsModel:
     wandb.init(
         project="speeding_up_diffusion",
         config=args.dict() if args.sweep_id is None else None,
-        tags=["mnist", args.model_type.value],
+        tags=[args.dataset.value, args.model_type.value],
     )
     return args.from_wandb_config(wandb.config)
 
