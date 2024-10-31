@@ -53,7 +53,7 @@ class LossType(str, Enum):
 class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 1000
-    n_between: int = 0
+    n_between: int = 4
     minimum_pixelation: int = 2
     n_feat = 128
     num_res_blocks = 4
@@ -61,24 +61,24 @@ class ArgsModel(BaseModel):
     attention_resolutions = [2, 4]
     channel_mult = (1, 2, 4)
     epochs: int = 50
-    lr: float = 4e-4
+    lr: float = 1e-4
     positional_degree: int = 6
     betas = (1e-4, 0.02)
     log_freq: int = 200
     image_size: int = 32
     dropout: float = 0.3
     gmm_components: int = 10
-    n_classes: int = 40
+    n_classes: int = 100
     model_ema_steps: int = 10
     model_ema_decay: float = 0.995
     model_type: ModelType = ModelType.scaling
-    loss_type: LossType = LossType.l1
+    loss_type: LossType = LossType.l2
     dataset: Dataset = Dataset.cifar
     channels: int = 3
     level_scheduler: str = "power"
     power: float = 0
     log_wandb: bool = False
-    calculate_metrics: bool = True
+    calculate_metrics: bool = False
     sweep_id: str = None
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
@@ -348,7 +348,9 @@ def main():
         to_size=args.minimum_pixelation,
         n_components=args.gmm_components,
     )
-    pixelate_T = Pixelate(args.minimum_pixelation).calculate_T(args.image_size)
+    pixelate_T = Pixelate(args.n_between, args.minimum_pixelation).calculate_T(
+        args.image_size
+    )
 
     attention_ds = []
     for res in args.attention_resolutions:
