@@ -53,7 +53,7 @@ class LossType(str, Enum):
 class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 1000
-    n_between: int = 4
+    max_step_size: int = 4
     minimum_pixelation: int = 2
     n_feat = 128
     num_res_blocks = 4
@@ -348,7 +348,7 @@ def main():
         to_size=args.minimum_pixelation,
         n_components=args.gmm_components,
     )
-    pixelate_T = Pixelate(args.n_between, args.minimum_pixelation).calculate_T(
+    pixelate_T = Pixelate(args.max_step_size, args.minimum_pixelation).calculate_T(
         args.image_size
     )
 
@@ -392,7 +392,7 @@ def main():
             device=device,
             criterion=criterion,
             n_classes=args.n_classes,
-            n_between=args.n_between,
+            max_step_size=args.max_step_size,
             initializer=initializer,
             minimum_pixelation=args.minimum_pixelation,
         )
@@ -425,7 +425,7 @@ def main():
             device=device,
             n_classes=args.n_classes,
             criterion=criterion,
-            n_between=args.n_between,
+            max_step_size=args.max_step_size,
             initializer=initializer,
             minimum_pixelation=args.minimum_pixelation,
             positional_degree=args.positional_degree,

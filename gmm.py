@@ -17,6 +17,7 @@ def train_gmm(dataloader: DataLoader, to_size=4, n_components=10):
 
     for images, labels in dataloader:
         for image, label in zip(images, labels):
+            # print(label)
             image = scale_images(image.unsqueeze(0), to_size=to_size)
             pixelated_images_per_class[int(label)].append(image.view(-1).numpy())
 

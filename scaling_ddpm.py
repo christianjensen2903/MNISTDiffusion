@@ -7,7 +7,8 @@ import torch.nn.functional as F
 from utils import scale_images, save_images
 import math
 from initializers import SampleInitializer
-from pixelate import Pixelate
+from pixelate import Pixelate, round_up_to_nearest_multiple
+import random
 
 
 class LevelScheduler:
@@ -52,7 +53,7 @@ class ScalingDDPM(DDPM):
         device,
         n_classes,
         criterion,
-        n_between: int,
+        max_step_size: int,
         initializer: SampleInitializer,
         minimum_pixelation: int,
         positional_degree: int,
@@ -71,12 +72,12 @@ class ScalingDDPM(DDPM):
         self.loss_mse = nn.MSELoss()
         self.sample_initializer = initializer
         self.degredation = Pixelate(
-            n_between=n_between,
+            max_step_size=max_step_size,
             minimum_pixelation=minimum_pixelation,
         )
         self.T = T
-        self.n_between = n_between
-        self.min_size = minimum_pixelation
+        self.max_step_size = max_step_size
+        self.minimum_pixelation = minimum_pixelation
         self.positional_degree = positional_degree
         self.scheduler = level_scheduler
 
@@ -87,27 +88,21 @@ class ScalingDDPM(DDPM):
 
         initial_size = x.shape[-1]
 
-        current_level = self._sample_level(initial_size, self.min_size * 2)
+        _ts = torch.tensor(self._sample_t(initial_size, x.shape[0]))
 
-        # Calculate new size
-        current_size = initial_size // (2**current_level)
+        x_downscaled = torch.stack(
+            [self.degredation(x[i], _ts[i] - 1) for i in range(x.shape[0])],
+            dim=0,
+        )
 
-        x_downscaled = scale_images(x, to_size=current_size)
-
-        _ts = torch.randint(1, self.n_between + 2, (x.shape[0],)).to(self.device)
-
-        x_t_list = [
-            self.degredation(x_downscaled[i], _ts[i]) for i in range(x.shape[0])
-        ]
+        x_t_list = [self.degredation(x[i], _ts[i]) for i in range(x.shape[0])]
 
         x_t = torch.stack(x_t_list, dim=0)
 
         x_t_pos = self._add_positional_embedding(x_t)
 
         # return MSE between added noise, and our predicted noise
-        pred = self.nn_model(
-            x_t_pos, ((self.n_between + 1) * current_level + _ts) / self.T, c
-        )
+        pred = self.nn_model(x_t_pos, _ts.to(self.device) / self.T, c)
 
         return self.criterion(x_downscaled, pred), pred, x_t, x_downscaled
 
@@ -121,48 +116,49 @@ class ScalingDDPM(DDPM):
         x_t = torch.cat(
             [
                 self.sample_initializer.sample(
-                    (1, self.nn_model.out_channels, self.min_size, self.min_size), c
+                    (
+                        1,
+                        self.nn_model.out_channels,
+                        self.minimum_pixelation,
+                        self.minimum_pixelation,
+                    ),
+                    c,
                 )
                 for c in c_i
             ]
         ).to(self.device)
 
-        x_t = scale_images(x_t, to_size=self.min_size * 2)
-
-        current_size = self.min_size * 2
+        current_size = x_t.shape[-1]
+        image_size = round_up_to_nearest_multiple(
+            max(current_size + 1, self.max_step_size)
+        )
+        x_t = scale_images(x_t, to_size=image_size)
 
         t = self.T
 
         save_images(scale_images(x_t, size[-1]), f"debug/samples/{t}.png")
 
-        while current_size <= size[-1]:
-            for relative_t in range(self.n_between + 1, 0, -1):
-                t_is = torch.tensor([t]).to(self.device)
-                t_is = t_is.repeat(n_sample)
+        while t > 0:
+            t_is = torch.tensor([t]).to(self.device)
+            t_is = t_is.repeat(n_sample)
 
-                x_t_pos = self._add_positional_embedding(x_t)
+            x_t_pos = self._add_positional_embedding(x_t)
 
-                x_0 = self.nn_model(x_t_pos, t_is / self.T, c_i)
-                x_0.clamp_(-1, 1)
+            x_t = self.nn_model(x_t_pos, t_is / self.T, c_i)
+            x_t.clamp_(-1, 1)
 
-                x_0 = scale_images(x_0, to_size=current_size)
+            t -= 1
+            current_size += self.max_step_size
+            next_size = round_up_to_nearest_multiple(
+                max(current_size + 1, self.max_step_size)
+            )
+            if next_size != image_size:
+                image_size = next_size
+                x_t = scale_images(x_t, image_size)
 
-                x_t = (
-                    x_t
-                    - self.degredation(x_0, (relative_t))
-                    + self.degredation(x_0, (relative_t - 1))
-                )
+            save_images(scale_images(x_t, size[-1]), f"debug/samples/{t}.png")
 
-                t -= 1
-
-                if relative_t - 1 == 0:
-                    current_size *= 2
-                    x_t = scale_images(x_t, current_size)
-
-                save_images(scale_images(x_t, size[-1]), f"debug/samples/{t}.png")
-                save_images(scale_images(x_0, size[-1]), f"debug/samples/{t}_0.png")
-
-        return x_0, c_i
+        return x_t, c_i
 
     def _add_positional_embedding(self, x):
         size = x.shape[-1]
@@ -197,7 +193,23 @@ class ScalingDDPM(DDPM):
         y_matrix = x_matrix.T
         return x_matrix, y_matrix
 
-    def _sample_level(self, max_size, min_size):
-        number_of_levels = int(math.log2(max_size) - math.log2(min_size)) + 1
-        prob_dist = self.scheduler.get_probabilities(number_of_levels)
-        return np.random.choice(number_of_levels, p=prob_dist)
+    def _sample_t(self, orig_image_size: int, n: int) -> np.ndarray:
+
+        current_size = orig_image_size
+        image_size = orig_image_size
+        possible_ts: list[list[int]] = [[]]
+        t = 0
+        while image_size > self.minimum_pixelation:
+            image_size = image_size - self.max_step_size
+            new_size = max(
+                self.minimum_pixelation, round_up_to_nearest_multiple(image_size)
+            )
+            if new_size != current_size:
+                possible_ts.append([])
+                current_size = new_size
+            t += 1
+            possible_ts[-1].append(t)
+
+        options = random.choices(possible_ts)[0]
+        ts = np.random.choice(options, n)
+        return ts

@@ -1,10 +1,17 @@
 import torch
 from utils import scale_images
+import math
+
+
+def round_up_to_nearest_multiple(x):
+    if x <= 1:
+        return 1
+    return 2 ** math.ceil(math.log2(x))
 
 
 class Pixelate:
-    def __init__(self, n_between: int = 1, minimum_pixelation: int = 8) -> None:
-        self.n_between = n_between
+    def __init__(self, max_step_size: int = 1, minimum_pixelation: int = 8) -> None:
+        self.max_step_size = max_step_size
         self.minimum_pixelation = minimum_pixelation
 
     def calculate_T(self, image_size: int) -> int:
@@ -13,35 +20,23 @@ class Pixelate:
         """
         steps = 0
         while image_size > self.minimum_pixelation:
-            steps += self.n_between + 1
-            image_size //= 2
+            steps += 1
+            image_size = image_size - self.max_step_size
         return steps
-
-    @staticmethod
-    def _scale_image(image: torch.Tensor, to_size: int) -> torch.Tensor:
-        """Helper method to scale image to a given size and then back to original."""
-        return scale_images(scale_images(image, to_size), image.shape[-1])
 
     def __call__(self, images: torch.Tensor, t: int) -> torch.Tensor:
         if isinstance(t, torch.Tensor):
             t = t.item()
 
-        image_size = images.shape[-1]
-        step_size = self.n_between + 1
+        orig_image_size = images.shape[-1]
+        target_size = max(
+            self.minimum_pixelation, orig_image_size - self.max_step_size * t
+        )
+        image_size = max(
+            round_up_to_nearest_multiple(max(target_size + 1, self.max_step_size)),
+            orig_image_size,
+        )
 
-        # Directly pixelate image if not between two image sizes
-        if t % step_size == 0:
-            return self._scale_image(images, image_size // (2 ** (t // step_size)))
-
-        # Calculate upper and lower image sizes
-        upper_image_size = image_size // (2 ** (t // step_size))
-        lower_image_size = image_size // (2 ** ((t // step_size) + 1))
-
-        # Scale images to their respective sizes
-        upper_image = self._scale_image(images, upper_image_size)
-        lower_image = self._scale_image(images, lower_image_size)
-
-        # Compute interpolation factor
-        interpolation = (t % step_size) / step_size
-
-        return (1 - interpolation) * upper_image + interpolation * lower_image
+        return scale_images(
+            scale_images(images, to_size=target_size), to_size=image_size
+        )

@@ -17,7 +17,7 @@ class ColdDDPM(DDPM):
         device,
         n_classes,
         criterion,
-        n_between: int,
+        max_step_size: int,
         initializer: SampleInitializer,
         minimum_pixelation: int,
     ):
@@ -34,11 +34,11 @@ class ColdDDPM(DDPM):
         self.loss_mse = nn.L1Loss()
         self.sample_initializer = initializer
         self.degredation = Pixelate(
-            n_between=n_between,
+            max_step_size=max_step_size,
             minimum_pixelation=minimum_pixelation,
         )
         self.T = T
-        self.n_between = n_between
+        self.max_step_size = max_step_size
         self.min_size = minimum_pixelation
 
     def forward(self, x, c):
