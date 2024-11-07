@@ -51,11 +51,11 @@ class LossType(str, Enum):
 
 
 class ArgsModel(BaseModel):
-    batch_size: int = 64
+    batch_size: int = 32
     timesteps: int = 1000
     n_between: int = 1
     minimum_pixelation: int = 2
-    n_feat = 128
+    n_feat = 256
     num_res_blocks = 4
     num_heads = 1
     attention_resolutions = [2, 4]
@@ -76,13 +76,14 @@ class ArgsModel(BaseModel):
     dataset: Dataset = Dataset.cifar
     channels: int = 3
     level_scheduler: str = "power"
-    power: float = 2
-    log_wandb: bool = False
+    power: float = 0
+    log_wandb: bool = True
     calculate_metrics: bool = True
     sweep_id: str = None
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
     models_dir = "./models/"
+    gradient_accumulation_steps = 5
 
     class Config:
         use_enum_values = True
@@ -125,8 +126,10 @@ def train_model(
 
         i = 0
         loss_per_size = {}
-        for x, c in pbar:
-            optim.zero_grad()
+        accumulated_loss = 0.0
+        gradient_accumulation_steps = 4  # New parameter for gradient accumulation steps
+
+        for step, (x, c) in enumerate(pbar):
             x, c = x.to(device), c.to(device)
 
             loss, pred, x_t, x_downscaled = model(x, c)
@@ -136,8 +139,24 @@ def train_model(
 
             loss_per_size[x_downscaled.shape[-1]].append(loss.item())
 
+            # Accumulate loss
+            loss = loss / gradient_accumulation_steps
             loss.backward()
 
+            accumulated_loss += loss.item()
+
+            if (step + 1) % gradient_accumulation_steps == 0 or (step + 1) == len(
+                train_dataloader
+            ):
+                optim.step()
+                optim.zero_grad()
+
+                if (global_steps % args.model_ema_steps) == 0:
+                    model_ema.update_parameters(model)
+
+                global_steps += 1
+
+            # Save images for visualization
             if i < 5:
                 size = x.shape[-1]
                 save_images(
@@ -146,17 +165,13 @@ def train_model(
                 save_images(scale_images(x_t, size), f"debug/x_t_{i}.png")
                 save_images(scale_images(pred, size), f"debug/pred_{i}.png")
                 save_images(x, f"debug/x_{i}.png")
-                i += 1
+            i += 1
 
-            total_loss += loss.item()
-
-            pbar.set_description(f"loss: {loss.item():.4f}")
-            optim.step()
-
-            if (global_steps % args.model_ema_steps) == 0:
-                model_ema.update_parameters(model)
-
-            global_steps += 1
+            total_loss += (
+                loss.item() * gradient_accumulation_steps
+            )  # Accumulate for display purposes
+            average_loss = accumulated_loss / i
+            pbar.set_description(f"loss: {average_loss:.4f}")
 
         # Print average loss per size
         for size in sorted(loss_per_size.keys()):
