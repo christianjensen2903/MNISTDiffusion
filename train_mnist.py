@@ -159,7 +159,8 @@ def train_model(
             global_steps += 1
 
         # Print average loss per size
-        for size, losses in loss_per_size.items():
+        for size in sorted(loss_per_size.keys()):
+            losses = loss_per_size[size]
             print(f"Average loss for size {size}: {sum(losses) / len(losses):.4f}")
 
         end_time = time.time()

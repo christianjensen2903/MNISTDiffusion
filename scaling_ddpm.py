@@ -95,7 +95,7 @@ class ScalingDDPM(DDPM):
         x_downscaled = scale_images(x, to_size=current_size)
 
         _ts = torch.randint(
-            1, min(self.n_between + 2, current_size // 2), (x.shape[0],)
+            1, min(self.n_between + 1, current_size // 2) + 1, (x.shape[0],)
         )
 
         x_t = torch.stack(

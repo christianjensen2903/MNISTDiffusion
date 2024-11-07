@@ -29,10 +29,9 @@ class Pixelate:
         if isinstance(t, torch.Tensor):
             t = t.item()
 
-        relative_t = t % (self.n_between + 1)
         image_size = images.shape[-1]
         step_size = max(1, (image_size // 2) // (self.n_between + 1))
 
         return scale_images(
-            scale_images(images, image_size - step_size * relative_t), image_size
+            scale_images(images, image_size - step_size * t), image_size
         )
