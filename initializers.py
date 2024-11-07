@@ -47,9 +47,9 @@ class RandomSampleInitializer(SampleInitializer):
         self.sample_lookup: dict[int, list[torch.Tensor]] = {}
         # Preload samples for each label
         for sample in self.dataloader:
-            if sample[1][0] not in self.sample_lookup:
-                self.sample_lookup[sample[1][0]] = []
-            self.sample_lookup[sample[1][0]].append(
+            if sample[1][0].item() not in self.sample_lookup:
+                self.sample_lookup[sample[1][0].item()] = []
+            self.sample_lookup[sample[1][0].item()].append(
                 scale_images(sample[0][0], self.to_size).unsqueeze(0)
             )
 
