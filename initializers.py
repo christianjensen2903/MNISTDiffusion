@@ -33,3 +33,28 @@ class GMMInitializer(SampleInitializer):
         samples = samples.reshape(size)
         samples = torch.tensor(samples, dtype=torch.float32)
         return scale_images(samples, size[-1])
+
+
+class RandomSampleInitializer(SampleInitializer):
+    def __init__(
+        self,
+        dataloader: DataLoader,
+        to_size: int,
+        n_components: int,
+    ):
+        self.dataloader = dataloader
+        self.to_size = to_size
+        self.sample_lookup: dict[int, list[torch.Tensor]] = {}
+        # Preload samples for each label
+        for sample in self.dataloader:
+            if sample[1][0] not in self.sample_lookup:
+                self.sample_lookup[sample[1][0]] = []
+            self.sample_lookup[sample[1][0]].append(
+                scale_images(sample[0][0], self.to_size).unsqueeze(0)
+            )
+
+    def sample(self, size, label):
+        # Sample a random sample from the lookup table
+        return self.sample_lookup[label.item()][
+            torch.randint(0, len(self.sample_lookup[label.item()]), (size[0],))
+        ]
