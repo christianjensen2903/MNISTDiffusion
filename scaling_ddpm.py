@@ -90,14 +90,17 @@ class ScalingDDPM(DDPM):
 
         _ts = torch.tensor(self._sample_t(initial_size, x.shape[0]))
 
-        x_downscaled = torch.stack(
-            [self.degredation(x[i], _ts[i] - 1) for i in range(x.shape[0])],
-            dim=0,
-        )
-
         x_t_list = [self.degredation(x[i], _ts[i]) for i in range(x.shape[0])]
 
         x_t = torch.stack(x_t_list, dim=0)
+
+        x_downscaled = torch.stack(
+            [
+                self.degredation(x[i], _ts[i] - 1, image_size=x_t.shape[-1])
+                for i in range(x.shape[0])
+            ],
+            dim=0,
+        )
 
         x_t_pos = self._add_positional_embedding(x_t)
 
@@ -204,11 +207,12 @@ class ScalingDDPM(DDPM):
             new_size = max(
                 self.minimum_pixelation, round_up_to_nearest_multiple(image_size)
             )
-            if new_size != current_size:
-                possible_ts.append([])
-                current_size = new_size
+
             t += 1
             possible_ts[-1].append(t)
+            if new_size != current_size and new_size != self.minimum_pixelation:
+                possible_ts.append([])
+                current_size = new_size
 
         options = random.choices(possible_ts)[0]
         ts = np.random.choice(options, n)

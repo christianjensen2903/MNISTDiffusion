@@ -24,7 +24,9 @@ class Pixelate:
             image_size = image_size - self.max_step_size
         return steps
 
-    def __call__(self, images: torch.Tensor, t: int) -> torch.Tensor:
+    def __call__(
+        self, images: torch.Tensor, t: int, image_size: int | None = None
+    ) -> torch.Tensor:
         if isinstance(t, torch.Tensor):
             t = t.item()
 
@@ -32,10 +34,11 @@ class Pixelate:
         target_size = max(
             self.minimum_pixelation, orig_image_size - self.max_step_size * t
         )
-        image_size = max(
-            round_up_to_nearest_multiple(max(target_size + 1, self.max_step_size)),
-            orig_image_size,
-        )
+        if image_size is None:
+            image_size = max(
+                round_up_to_nearest_multiple(max(target_size + 1, self.max_step_size)),
+                orig_image_size,
+            )
 
         return scale_images(
             scale_images(images, to_size=target_size), to_size=image_size
