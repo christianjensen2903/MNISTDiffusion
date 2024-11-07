@@ -9,7 +9,7 @@ from scaling_ddpm import (
     UniformScheduler,
 )
 from pixelate import Pixelate
-from initializers import GMMInitializer
+from initializers import GMMInitializer, RandomSampleInitializer
 from ddpm import DDPM
 from unet import UNetModel
 from torch.utils.data import DataLoader
@@ -53,7 +53,7 @@ class LossType(str, Enum):
 class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 1000
-    max_step_size: int = 4
+    n_between: int = 3
     minimum_pixelation: int = 2
     n_feat = 128
     num_res_blocks = 4
@@ -68,17 +68,17 @@ class ArgsModel(BaseModel):
     image_size: int = 32
     dropout: float = 0.3
     gmm_components: int = 10
-    n_classes: int = 100
+    n_classes: int = 10
     model_ema_steps: int = 10
     model_ema_decay: float = 0.995
     model_type: ModelType = ModelType.scaling
-    loss_type: LossType = LossType.l2
+    loss_type: LossType = LossType.l1
     dataset: Dataset = Dataset.cifar
     channels: int = 3
     level_scheduler: str = "power"
     power: float = 0
     log_wandb: bool = False
-    calculate_metrics: bool = False
+    calculate_metrics: bool = True
     sweep_id: str = None
     save_model = False
     save_dir = "./data/diffusion_outputs10/"
@@ -343,12 +343,12 @@ def main():
     elif args.loss_type == LossType.l2:
         criterion = torch.nn.MSELoss()
 
-    initializer = GMMInitializer(
+    initializer = RandomSampleInitializer(
         train_dataloader,
         to_size=args.minimum_pixelation,
         n_components=args.gmm_components,
     )
-    pixelate_T = Pixelate(args.max_step_size, args.minimum_pixelation).calculate_T(
+    pixelate_T = Pixelate(args.n_between, args.minimum_pixelation).calculate_T(
         args.image_size
     )
 
@@ -392,7 +392,7 @@ def main():
             device=device,
             criterion=criterion,
             n_classes=args.n_classes,
-            max_step_size=args.max_step_size,
+            max_step_size=args.n_between,
             initializer=initializer,
             minimum_pixelation=args.minimum_pixelation,
         )
@@ -425,7 +425,7 @@ def main():
             device=device,
             n_classes=args.n_classes,
             criterion=criterion,
-            max_step_size=args.max_step_size,
+            n_between=args.n_between,
             initializer=initializer,
             minimum_pixelation=args.minimum_pixelation,
             positional_degree=args.positional_degree,

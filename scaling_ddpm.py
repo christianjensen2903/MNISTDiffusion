@@ -53,7 +53,7 @@ class ScalingDDPM(DDPM):
         device,
         n_classes,
         criterion,
-        max_step_size: int,
+        n_between: int,
         initializer: SampleInitializer,
         minimum_pixelation: int,
         positional_degree: int,
@@ -72,11 +72,11 @@ class ScalingDDPM(DDPM):
         self.loss_mse = nn.MSELoss()
         self.sample_initializer = initializer
         self.degredation = Pixelate(
-            max_step_size=max_step_size,
+            n_between=n_between,
             minimum_pixelation=minimum_pixelation,
         )
         self.T = T
-        self.max_step_size = max_step_size
+        self.n_between = n_between
         self.minimum_pixelation = minimum_pixelation
         self.positional_degree = positional_degree
         self.scheduler = level_scheduler
@@ -88,24 +88,34 @@ class ScalingDDPM(DDPM):
 
         initial_size = x.shape[-1]
 
-        _ts = torch.tensor(self._sample_t(initial_size, x.shape[0]))
+        current_level = self._sample_level(initial_size, self.minimum_pixelation * 2)
 
-        x_t_list = [self.degredation(x[i], _ts[i]) for i in range(x.shape[0])]
+        current_size = initial_size // (2**current_level)
 
-        x_t = torch.stack(x_t_list, dim=0)
+        x_downscaled = scale_images(x, to_size=current_size)
+
+        _ts = torch.randint(
+            1, min(self.n_between + 2, current_size // 2), (x.shape[0],)
+        )
+
+        x_t = torch.stack(
+            [self.degredation(x_downscaled[i], _ts[i]) for i in range(x.shape[0])],
+            dim=0,
+        )
 
         x_downscaled = torch.stack(
-            [
-                self.degredation(x[i], _ts[i] - 1, image_size=x_t.shape[-1])
-                for i in range(x.shape[0])
-            ],
+            [self.degredation(x_downscaled[i], _ts[i] - 1) for i in range(x.shape[0])],
             dim=0,
         )
 
         x_t_pos = self._add_positional_embedding(x_t)
 
         # return MSE between added noise, and our predicted noise
-        pred = self.nn_model(x_t_pos, _ts.to(self.device) / self.T, c)
+        pred = self.nn_model(
+            x_t_pos,
+            ((self.n_between + 1) * current_level + _ts).to(self.device) / self.T,
+            c,
+        )
 
         return self.criterion(x_downscaled, pred), pred, x_t, x_downscaled
 
@@ -131,10 +141,8 @@ class ScalingDDPM(DDPM):
             ]
         ).to(self.device)
 
-        current_size = x_t.shape[-1]
-        image_size = round_up_to_nearest_multiple(
-            max(current_size + 1, self.max_step_size)
-        )
+        current_size = self.minimum_pixelation
+        image_size = self.minimum_pixelation * 2
         x_t = scale_images(x_t, to_size=image_size)
 
         t = self.T
@@ -151,11 +159,9 @@ class ScalingDDPM(DDPM):
             x_t.clamp_(-1, 1)
 
             t -= 1
-            current_size += self.max_step_size
-            next_size = round_up_to_nearest_multiple(
-                max(current_size + 1, self.max_step_size)
-            )
-            if next_size != image_size:
+            current_size += max(1, (image_size // 2) // (self.n_between + 1))
+            next_size = round_up_to_nearest_multiple(current_size + 1)
+            if next_size != image_size and t > 0:
                 image_size = next_size
                 x_t = scale_images(x_t, image_size)
 
@@ -203,7 +209,7 @@ class ScalingDDPM(DDPM):
         possible_ts: list[list[int]] = [[]]
         t = 0
         while image_size > self.minimum_pixelation:
-            image_size = image_size - self.max_step_size
+            image_size = image_size - self.n_between
             new_size = max(
                 self.minimum_pixelation, round_up_to_nearest_multiple(image_size)
             )
@@ -217,3 +223,8 @@ class ScalingDDPM(DDPM):
         options = random.choices(possible_ts)[0]
         ts = np.random.choice(options, n)
         return ts
+
+    def _sample_level(self, max_size, min_size):
+        number_of_levels = int(math.log2(max_size) - math.log2(min_size)) + 1
+        prob_dist = self.scheduler.get_probabilities(number_of_levels)
+        return np.random.choice(number_of_levels, p=prob_dist)

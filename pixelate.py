@@ -10,8 +10,9 @@ def round_up_to_nearest_multiple(x):
 
 
 class Pixelate:
-    def __init__(self, max_step_size: int = 1, minimum_pixelation: int = 8) -> None:
-        self.max_step_size = max_step_size
+    def __init__(self, n_between: int = 1, minimum_pixelation: int = 8) -> None:
+        assert n_between in [1, 3, 7, 15, 31]
+        self.n_between = n_between
         self.minimum_pixelation = minimum_pixelation
 
     def calculate_T(self, image_size: int) -> int:
@@ -20,26 +21,18 @@ class Pixelate:
         """
         steps = 0
         while image_size > self.minimum_pixelation:
-            steps += 1
-            image_size = image_size - self.max_step_size
+            steps += min(self.n_between + 1, image_size // 2)
+            image_size //= 2
         return steps
 
-    def __call__(
-        self, images: torch.Tensor, t: int, image_size: int | None = None
-    ) -> torch.Tensor:
+    def __call__(self, images: torch.Tensor, t: int) -> torch.Tensor:
         if isinstance(t, torch.Tensor):
             t = t.item()
 
-        orig_image_size = images.shape[-1]
-        target_size = max(
-            self.minimum_pixelation, orig_image_size - self.max_step_size * t
-        )
-        if image_size is None:
-            image_size = max(
-                round_up_to_nearest_multiple(max(target_size + 1, self.max_step_size)),
-                orig_image_size,
-            )
+        relative_t = t % (self.n_between + 1)
+        image_size = images.shape[-1]
+        step_size = max(1, (image_size // 2) // (self.n_between + 1))
 
         return scale_images(
-            scale_images(images, to_size=target_size), to_size=image_size
+            scale_images(images, image_size - step_size * relative_t), image_size
         )
