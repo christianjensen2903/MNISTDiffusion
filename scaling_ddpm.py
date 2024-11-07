@@ -117,7 +117,12 @@ class ScalingDDPM(DDPM):
             c,
         )
 
-        return self.criterion(x_downscaled, pred), pred, x_t, x_downscaled
+        return (
+            self.criterion(x_downscaled, pred) * np.log2(current_size),
+            pred,
+            x_t,
+            x_downscaled,
+        )
 
     @torch.no_grad()
     def sample(

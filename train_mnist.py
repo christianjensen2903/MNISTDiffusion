@@ -53,7 +53,7 @@ class LossType(str, Enum):
 class ArgsModel(BaseModel):
     batch_size: int = 64
     timesteps: int = 1000
-    n_between: int = 3
+    n_between: int = 1
     minimum_pixelation: int = 2
     n_feat = 128
     num_res_blocks = 4
@@ -76,7 +76,7 @@ class ArgsModel(BaseModel):
     dataset: Dataset = Dataset.cifar
     channels: int = 3
     level_scheduler: str = "power"
-    power: float = 0
+    power: float = 2
     log_wandb: bool = False
     calculate_metrics: bool = True
     sweep_id: str = None
@@ -124,11 +124,18 @@ def train_model(
         total_loss = 0
 
         i = 0
+        loss_per_size = {}
         for x, c in pbar:
             optim.zero_grad()
             x, c = x.to(device), c.to(device)
 
             loss, pred, x_t, x_downscaled = model(x, c)
+
+            if x_downscaled.shape[-1] not in loss_per_size:
+                loss_per_size[x_downscaled.shape[-1]] = []
+
+            loss_per_size[x_downscaled.shape[-1]].append(loss.item())
+
             loss.backward()
 
             if i < 5:
@@ -150,6 +157,10 @@ def train_model(
                 model_ema.update_parameters(model)
 
             global_steps += 1
+
+        # Print average loss per size
+        for size, losses in loss_per_size.items():
+            print(f"Average loss for size {size}: {sum(losses) / len(losses):.4f}")
 
         end_time = time.time()
 
